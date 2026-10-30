@@ -1,0 +1,1035 @@
+--==============================================================
+-- QuackUI · Town (full)
+-- Lib + AC bypass + Loader + Combat / Visuals / Misc
+--==============================================================
+
+local Library = loadstring(game:HttpGet(
+	"https://raw.githubusercontent.com/Dyinka/QuackUI/refs/heads/main/QuackUI.lua"
+))()
+
+local Players          = game:GetService("Players")
+local RunService       = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local Lighting         = game:GetService("Lighting")
+local Workspace        = game:GetService("Workspace")
+local LocalPlayer      = Players.LocalPlayer
+
+--==============================================================
+-- SETTINGS
+--==============================================================
+local Settings = _G.UltimateSettings or {
+	NoRecoil = false, NoSway = false, TriggerBot = false,
+	InfiniteAmmo = false, InstantReload = false, NoSpread = false,
+	ESP = false, ESPColor = Color3.fromRGB(160, 100, 255),
+	ESPShowHP = false, ESPShowName = false, ESPShowDistance = false,
+	FullBright = false, NoFog = false, Crosshair = false,
+	UIKey = Enum.KeyCode.K,
+	SilentAim = false, SilentAimPart = "Head", SilentAimFOV = 200,
+	SilentAimKey = Enum.KeyCode.T, SilentAimWallCheck = false,
+	SilentAimIgnoreFriends = false,
+	SilentAimFOVColor = Color3.fromRGB(255, 0, 0),
+	SilentAimFOVCircle = false,
+	SilentAimRandomPart = false,
+	SilentAimPriority = "FOV",
+}
+
+if type(Settings.UIKey) == "string" then
+	Settings.UIKey = Enum.KeyCode[Settings.UIKey] or Enum.KeyCode.K
+end
+if type(Settings.SilentAimKey) == "string" then
+	Settings.SilentAimKey = Enum.KeyCode[Settings.SilentAimKey] or Enum.KeyCode.T
+end
+
+local function save()
+	_G.UltimateSettings = Settings
+end
+
+-- forward decls
+local updateFOVCircle, setNoRecoil, setNoSway, enableTriggerBot, disableTriggerBot
+local enableInfiniteAmmo, disableInfiniteAmmo, setInstantReload, setNoSpread
+local enableESP, disableESP, setFullBright, setNoFog, createCrosshair, removeCrosshair
+
+--==============================================================
+-- AC BYPASS (Detected → yield, Kill → nop)
+--==============================================================
+local function runAntiCheatBypass()
+	task.wait(0.5)
+
+	local detectedFunc
+	for _, v in pairs(getgc(true)) do
+		if type(v) == "table" then
+			local ok, d = pcall(rawget, v, "Detected")
+			if ok and type(d) == "function" then
+				detectedFunc = d
+				break
+			end
+		end
+	end
+
+	if detectedFunc then
+		pcall(function()
+			hookfunction(detectedFunc, function(...)
+				coroutine.yield()
+			end)
+		end)
+	end
+
+	task.wait()
+
+	local kills = {}
+	for _, v in pairs(getgc(true)) do
+		if type(v) == "table" then
+			local ok, k = pcall(rawget, v, "Kill")
+			if ok and type(k) == "function" then
+				table.insert(kills, k)
+			end
+		end
+	end
+
+	for _, k in ipairs(kills) do
+		pcall(function()
+			hookfunction(k, function(...) end)
+		end)
+		task.wait()
+	end
+end
+
+--==============================================================
+-- LOADER → WINDOW
+--==============================================================
+Library:CreateLoader({
+	Title      = "QuackHub",
+	Subtitle   = "Town",
+	Theme      = "Charcoal",
+	ShowBar    = true,
+	FadeTime   = 0.35,
+	FloatImage = "rbxassetid://71109437053861",
+
+	Texts = {
+		{ Text = "Checking environment...", Duration = 0.45 },
+		{
+			Text = "Bypassing protections...",
+			Duration = 1.1,
+			Callback = function()
+				pcall(runAntiCheatBypass)
+			end,
+		},
+		{ Text = "Loading modules...", Duration = 0.5 },
+		{ Text = "Building UI...", Duration = 0.45 },
+	},
+
+	FinishText = "Ready",
+
+	OnFinish = function()
+		pcall(runAntiCheatBypass)
+
+		local Window = Library:CreateWindow({
+			Title            = "Quack Hub",
+			Theme            = "Charcoal",
+			Width            = 800,
+			Height           = 560,
+			ToggleKey        = Settings.UIKey or Enum.KeyCode.K,
+			Watermark        = "QuackHub · Town",
+			ShowWatermark    = true,
+			ShowDropButton   = true,
+			SoundEnabled     = true,
+			MainTransparency = 0.22,
+			HeaderImage      = "rbxassetid://71109437053861",
+			FloatImage       = "rbxassetid://71109437053861",
+		})
+
+		--======================================================
+		-- COMBAT
+		--======================================================
+		local Combat = Window:CreateTab("Combat", "rbxassetid://10709751939")
+		Combat:CreateSection("Silent Aim")
+
+		local silentAimToggle
+		local function setSilentAim(v)
+			if Settings.SilentAim == v then return end
+			Settings.SilentAim = v
+			save()
+			pcall(updateFOVCircle)
+			if silentAimToggle then silentAimToggle:Set(v) end
+		end
+
+		silentAimToggle = Combat:CreateToggle({
+			Title = "Silent Aim",
+			Default = Settings.SilentAim,
+			Flag = "SilentAim",
+			Callback = function(v)
+				if Settings.SilentAim ~= v then
+					Settings.SilentAim = v
+					save()
+					pcall(updateFOVCircle)
+				end
+			end,
+		})
+
+		Combat:CreateKeybind({
+			Title = "Silent Aim Hotkey",
+			Default = Settings.SilentAimKey,
+			Flag = "SilentAimKey",
+			Callback = function(key)
+				Settings.SilentAimKey = key
+				save()
+				setSilentAim(not Settings.SilentAim)
+			end,
+		})
+
+		Combat:CreateSlider({
+			Title = "FOV",
+			Min = 10, Max = 500,
+			Default = Settings.SilentAimFOV,
+			Flag = "SilentAimFOV",
+			Callback = function(v)
+				Settings.SilentAimFOV = v
+				save()
+				pcall(updateFOVCircle)
+			end,
+		})
+
+		Combat:CreateDropdown({
+			Title = "Aim Part",
+			Options = { "Head", "UpperTorso", "HumanoidRootPart" },
+			Default = Settings.SilentAimPart,
+			Flag = "SilentAimPart",
+			Callback = function(v)
+				Settings.SilentAimPart = v
+				save()
+			end,
+		})
+
+		Combat:CreateToggle({
+			Title = "Random Body Part",
+			Default = Settings.SilentAimRandomPart,
+			Flag = "SilentAimRandomPart",
+			Callback = function(v) Settings.SilentAimRandomPart = v; save() end,
+		})
+
+		Combat:CreateDropdown({
+			Title = "Priority",
+			Options = { "FOV", "Distance", "Health" },
+			Default = Settings.SilentAimPriority,
+			Flag = "SilentAimPriority",
+			Callback = function(v) Settings.SilentAimPriority = v; save() end,
+		})
+
+		Combat:CreateToggle({
+			Title = "Wall Check",
+			Default = Settings.SilentAimWallCheck,
+			Flag = "SilentAimWallCheck",
+			Callback = function(v) Settings.SilentAimWallCheck = v; save() end,
+		})
+
+		Combat:CreateToggle({
+			Title = "Ignore Friends",
+			Default = Settings.SilentAimIgnoreFriends,
+			Flag = "SilentAimIgnoreFriends",
+			Callback = function(v) Settings.SilentAimIgnoreFriends = v; save() end,
+		})
+
+		Combat:CreateToggle({
+			Title = "FOV Circle",
+			Default = Settings.SilentAimFOVCircle,
+			Flag = "SilentAimFOVCircle",
+			Callback = function(v)
+				Settings.SilentAimFOVCircle = v
+				save()
+				pcall(updateFOVCircle)
+			end,
+		})
+
+		Combat:CreateColorPicker({
+			Title = "FOV Color",
+			Default = Settings.SilentAimFOVColor,
+			Flag = "SilentAimFOVColor",
+			Callback = function(c)
+				Settings.SilentAimFOVColor = c
+				save()
+				pcall(updateFOVCircle)
+			end,
+		})
+
+		Combat:CreateSection("Weapon")
+		Combat:CreateToggle({
+			Title = "No Recoil",
+			Default = Settings.NoRecoil,
+			Flag = "NoRecoil",
+			Callback = function(v) Settings.NoRecoil = v; save(); setNoRecoil(v) end,
+		})
+		Combat:CreateToggle({
+			Title = "No Sway",
+			Default = Settings.NoSway,
+			Flag = "NoSway",
+			Callback = function(v) Settings.NoSway = v; save(); setNoSway(v) end,
+		})
+		Combat:CreateToggle({
+			Title = "Trigger Bot",
+			Default = Settings.TriggerBot,
+			Flag = "TriggerBot",
+			Callback = function(v)
+				Settings.TriggerBot = v
+				save()
+				if v then enableTriggerBot() else disableTriggerBot() end
+			end,
+		})
+		Combat:CreateToggle({
+			Title = "Infinite Ammo",
+			Default = Settings.InfiniteAmmo,
+			Flag = "InfiniteAmmo",
+			Callback = function(v)
+				Settings.InfiniteAmmo = v
+				save()
+				if v then enableInfiniteAmmo() else disableInfiniteAmmo() end
+			end,
+		})
+		Combat:CreateToggle({
+			Title = "Instant Reload",
+			Default = Settings.InstantReload,
+			Flag = "InstantReload",
+			Callback = function(v) Settings.InstantReload = v; save(); setInstantReload(v) end,
+		})
+		Combat:CreateToggle({
+			Title = "No Spread",
+			Default = Settings.NoSpread,
+			Flag = "NoSpread",
+			Callback = function(v) Settings.NoSpread = v; save(); setNoSpread(v) end,
+		})
+
+		--======================================================
+		-- VISUALS
+		--======================================================
+		local Visuals = Window:CreateTab("Visuals", "rbxassetid://10723346959")
+		Visuals:CreateSection("ESP")
+		Visuals:CreateToggle({
+			Title = "ESP",
+			Default = Settings.ESP,
+			Flag = "ESP",
+			Callback = function(v)
+				Settings.ESP = v
+				save()
+				if v then enableESP() else disableESP() end
+			end,
+		})
+		Visuals:CreateColorPicker({
+			Title = "ESP Color",
+			Default = Settings.ESPColor,
+			Flag = "ESPColor",
+			Callback = function(c) Settings.ESPColor = c; save() end,
+		})
+		Visuals:CreateToggle({
+			Title = "Show HP",
+			Default = Settings.ESPShowHP,
+			Flag = "ESPShowHP",
+			Callback = function(v) Settings.ESPShowHP = v; save() end,
+		})
+		Visuals:CreateToggle({
+			Title = "Show Name",
+			Default = Settings.ESPShowName,
+			Flag = "ESPShowName",
+			Callback = function(v) Settings.ESPShowName = v; save() end,
+		})
+		Visuals:CreateToggle({
+			Title = "Show Distance",
+			Default = Settings.ESPShowDistance,
+			Flag = "ESPShowDistance",
+			Callback = function(v) Settings.ESPShowDistance = v; save() end,
+		})
+
+		--======================================================
+		-- MISC
+		--======================================================
+		local Misc = Window:CreateTab("Misc", "rbxassetid://10709769123")
+		Misc:CreateToggle({
+			Title = "Full Bright",
+			Default = Settings.FullBright,
+			Flag = "FullBright",
+			Callback = function(v) Settings.FullBright = v; save(); setFullBright(v) end,
+		})
+		Misc:CreateToggle({
+			Title = "No Fog",
+			Default = Settings.NoFog,
+			Flag = "NoFog",
+			Callback = function(v) Settings.NoFog = v; save(); setNoFog(v) end,
+		})
+		Misc:CreateToggle({
+			Title = "Crosshair",
+			Default = Settings.Crosshair,
+			Flag = "Crosshair",
+			Callback = function(v)
+				Settings.Crosshair = v
+				save()
+				if v then createCrosshair() else removeCrosshair() end
+			end,
+		})
+
+		local Info = Window:CreateTab("Info", "rbxassetid://10709752035")
+		Info:CreateSection("Credits")
+		Info:CreateButton({
+			Title = "Thanks You Lu4ikk1",
+			Callback = function()
+				Window:Notify("QuackHub", "Town build", 2)
+			end,
+		})
+		Info:CreateKeybind({
+			Title = "UI Key",
+			Default = Settings.UIKey,
+			Flag = "UIKey",
+			Callback = function(key)
+				Settings.UIKey = key
+				save()
+				Window:Notify("UI Key", "Saved: " .. key.Name, 2.5)
+			end,
+		})
+
+		Window:Notify("QuackHub", "Town ready.", 3)
+
+		-- restore saved features
+		if Settings.NoRecoil then setNoRecoil(true) end
+		if Settings.NoSway then setNoSway(true) end
+		if Settings.TriggerBot then enableTriggerBot() end
+		if Settings.InfiniteAmmo then enableInfiniteAmmo() end
+		if Settings.InstantReload then setInstantReload(true) end
+		if Settings.NoSpread then setNoSpread(true) end
+		if Settings.ESP then enableESP() end
+		if Settings.FullBright then setFullBright(true) end
+		if Settings.NoFog then setNoFog(true) end
+		if Settings.Crosshair then createCrosshair() end
+		pcall(updateFOVCircle)
+	end,
+})
+
+--==============================================================
+-- FOV CIRCLE
+--==============================================================
+local FOVCircle
+function updateFOVCircle()
+	if FOVCircle then
+		pcall(function() FOVCircle:Remove() end)
+		FOVCircle = nil
+	end
+	if not (Settings.SilentAim and Settings.SilentAimFOVCircle) then return end
+	if not Drawing or not Drawing.new then return end
+
+	local ok, circle = pcall(function() return Drawing.new("Circle") end)
+	if not ok or not circle then return end
+
+	FOVCircle = circle
+	FOVCircle.Visible = true
+	FOVCircle.Thickness = 1.5
+	FOVCircle.Transparency = 0.7
+	FOVCircle.ZIndex = 10
+	FOVCircle.Filled = false
+	FOVCircle.NumSides = 64
+
+	local conn
+	conn = RunService.RenderStepped:Connect(function()
+		if not FOVCircle or not Settings.SilentAim then
+			if conn then conn:Disconnect() end
+			return
+		end
+		local cam = workspace.CurrentCamera
+		if cam then
+			FOVCircle.Position = Vector2.new(cam.ViewportSize.X / 2, cam.ViewportSize.Y / 2)
+			FOVCircle.Radius = Settings.SilentAimFOV
+			FOVCircle.Color = Settings.SilentAimFOVColor
+		end
+	end)
+end
+
+--==============================================================
+-- LIGHTING
+--==============================================================
+function setFullBright(v)
+	Lighting.Brightness = v and 3 or 1
+	Lighting.FogEnd = v and 99999 or 1000
+	Lighting.OutdoorAmbient = v and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(128, 128, 128)
+	Lighting.GlobalShadows = not v
+end
+
+function setNoFog(v)
+	Lighting.FogEnd = v and 99999 or 1000
+end
+
+--==============================================================
+-- ESP
+--==============================================================
+local espActive = false
+local espConnections = {}
+
+local function clearESPFor(character)
+	if not character then return end
+	local hl = character:FindFirstChild("ESP_HL")
+	if hl then hl:Destroy() end
+	local head = character:FindFirstChild("Head")
+	if head then
+		local bb = head:FindFirstChild("ESP_BB")
+		if bb then bb:Destroy() end
+	end
+end
+
+local function espLoop()
+	while espActive do
+		pcall(function()
+			for _, plr in ipairs(Players:GetPlayers()) do
+				if plr ~= LocalPlayer and plr.Character then
+					local head = plr.Character:FindFirstChild("Head")
+					local hum = plr.Character:FindFirstChildOfClass("Humanoid")
+					if not head or not hum or hum.Health <= 0 then
+						clearESPFor(plr.Character)
+						continue
+					end
+
+					local hl = plr.Character:FindFirstChild("ESP_HL")
+					if not hl then
+						hl = Instance.new("Highlight")
+						hl.Name = "ESP_HL"
+						hl.FillTransparency = 0.5
+						hl.OutlineTransparency = 0
+						hl.Parent = plr.Character
+					end
+					hl.Adornee = plr.Character
+					hl.FillColor = Settings.ESPColor
+					hl.OutlineColor = Settings.ESPColor
+
+					local showInfo = Settings.ESPShowName or Settings.ESPShowHP or Settings.ESPShowDistance
+					local bb = head:FindFirstChild("ESP_BB")
+
+					if showInfo then
+						if not bb then
+							bb = Instance.new("BillboardGui")
+							bb.Name = "ESP_BB"
+							bb.Size = UDim2.new(0, 150, 0, 50)
+							bb.StudsOffset = Vector3.new(0, 3, 0)
+							bb.AlwaysOnTop = true
+							bb.Parent = head
+
+							local label = Instance.new("TextLabel")
+							label.Name = "ESP_Text"
+							label.Size = UDim2.new(1, 0, 1, 0)
+							label.BackgroundTransparency = 1
+							label.TextColor3 = Color3.fromRGB(255, 255, 255)
+							label.TextSize = 12
+							label.Font = Enum.Font.GothamBold
+							label.TextStrokeTransparency = 0.5
+							label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+							label.Parent = bb
+						end
+
+						local label = bb:FindFirstChild("ESP_Text")
+						if label then
+							local parts = {}
+							if Settings.ESPShowName then table.insert(parts, plr.Name) end
+							if Settings.ESPShowHP then
+								table.insert(parts, math.floor(hum.Health) .. "/" .. math.floor(hum.MaxHealth) .. " HP")
+							end
+							if Settings.ESPShowDistance and LocalPlayer.Character then
+								local root = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+								if root then
+									table.insert(parts, math.floor((head.Position - root.Position).Magnitude) .. "m")
+								end
+							end
+							label.Text = table.concat(parts, "\n")
+						end
+					elseif bb then
+						bb:Destroy()
+					end
+				end
+			end
+		end)
+		task.wait(0.2)
+	end
+end
+
+function enableESP()
+	espActive = true
+	for _, conn in ipairs(espConnections) do pcall(function() conn:Disconnect() end) end
+	espConnections = {}
+	table.insert(espConnections, Players.PlayerRemoving:Connect(function(plr)
+		clearESPFor(plr.Character)
+	end))
+	task.spawn(espLoop)
+end
+
+function disableESP()
+	espActive = false
+	for _, conn in ipairs(espConnections) do pcall(function() conn:Disconnect() end) end
+	espConnections = {}
+	for _, plr in ipairs(Players:GetPlayers()) do
+		clearESPFor(plr.Character)
+	end
+end
+
+--==============================================================
+-- NO RECOIL
+--==============================================================
+local noRecoilActive = false
+local noRecoilConnections = {}
+
+function setNoRecoil(v)
+	if not v then
+		noRecoilActive = false
+		for _, conn in ipairs(noRecoilConnections) do pcall(function() conn:Disconnect() end) end
+		noRecoilConnections = {}
+		return
+	end
+	noRecoilActive = true
+
+	table.insert(noRecoilConnections, RunService.RenderStepped:Connect(function()
+		if not noRecoilActive then return end
+		local recoil = LocalPlayer:FindFirstChild("Recoil")
+		if not recoil then return end
+		local cr = recoil:FindFirstChild("CurrentRecoil")
+		local cr2 = recoil:FindFirstChild("CurrentRecoil2")
+		local cr3 = recoil:FindFirstChild("CurrentRecoil3")
+		if cr and cr:IsA("CFrameValue") then cr.Value = CFrame.new() end
+		if cr2 and cr2:IsA("CFrameValue") then cr2.Value = CFrame.new() end
+		if cr3 and cr3:IsA("NumberValue") then cr3.Value = 0 end
+	end))
+
+	table.insert(noRecoilConnections, RunService.Heartbeat:Connect(function()
+		if not noRecoilActive then return end
+		local char = LocalPlayer.Character
+		if not char then return end
+		local gav = char:FindFirstChild("GUNAIMVALUE")
+		if gav then
+			for _, c in ipairs(gav:GetChildren()) do
+				if c:IsA("NumberValue") then c.Value = 0 end
+			end
+			if gav:IsA("NumberValue") then gav.Value = 0 end
+		end
+	end))
+
+	local function clearAttachmentStats(tool)
+		if not tool:IsA("Tool") then return end
+		local folder = tool:FindFirstChild("AttachmentFolder")
+		if not folder then return end
+		for _, attachment in ipairs(folder:GetChildren()) do
+			local isAttachment = attachment:FindFirstChild("IsAttachment")
+			if isAttachment and isAttachment.Value == "Sights" then
+				local stats = attachment:FindFirstChild("Stats")
+				if stats then
+					for _, name in ipairs({
+						"GunRecoil", "GunRecoilX", "GunRecoilAimed", "RecoilAngle",
+						"RecoilSpread", "RecoilStrength", "AimSway", "AimSpeed", "AimScatterMultiplyer"
+					}) do
+						local stat = stats:FindFirstChild(name)
+						if stat and stat:IsA("NumberValue") then stat.Value = 0 end
+					end
+				end
+			end
+		end
+	end
+
+	table.insert(noRecoilConnections, RunService.Heartbeat:Connect(function()
+		if not noRecoilActive then return end
+		local bp = LocalPlayer:FindFirstChild("Backpack")
+		if bp then
+			for _, tool in ipairs(bp:GetChildren()) do clearAttachmentStats(tool) end
+		end
+		local char = LocalPlayer.Character
+		if char then
+			for _, tool in ipairs(char:GetChildren()) do clearAttachmentStats(tool) end
+		end
+	end))
+
+	table.insert(noRecoilConnections, RunService.Heartbeat:Connect(function()
+		if not noRecoilActive then return end
+		local char = LocalPlayer.Character
+		if not char then return end
+		local humanoid = char:FindFirstChildOfClass("Humanoid")
+		if not humanoid then return end
+		for _, track in ipairs(humanoid:GetPlayingAnimationTracks()) do
+			if not track.Animation then continue end
+			local name = track.Animation.Name:lower()
+			if name:find("fire") or name:find("recoil") or name:find("aim") then
+				track:AdjustSpeed(999)
+			end
+		end
+	end))
+
+	table.insert(noRecoilConnections, RunService.Heartbeat:Connect(function()
+		if not noRecoilActive then return end
+		local char = LocalPlayer.Character
+		if not char then return end
+		for _, tool in ipairs(char:GetChildren()) do
+			if not tool:IsA("Tool") then continue end
+			for name, value in pairs({
+				GunRecoil = 0, GunRecoilX = 0, RecoilAngle = 0,
+				RecoilSpread = 0, RecoilStrength = 0, AimSway = 0
+			}) do
+				local existing = tool:FindFirstChild(name)
+				if existing then
+					existing.Value = value
+				else
+					local val = Instance.new("NumberValue")
+					val.Name = name
+					val.Value = value
+					val.Parent = tool
+				end
+			end
+		end
+	end))
+end
+
+--==============================================================
+-- NO SWAY
+--==============================================================
+local swayActive = false
+function setNoSway(v)
+	if not v then swayActive = false; return end
+	swayActive = true
+	task.spawn(function()
+		while swayActive do
+			local char = LocalPlayer.Character
+			if char then
+				local gav = char:FindFirstChild("GUNAIMVALUE") or char:FindFirstChild("GunAimValue")
+				if gav then
+					for _, c in ipairs(gav:GetChildren()) do
+						if c:IsA("NumberValue") then c.Value = 0
+						elseif c:IsA("BoolValue") and c.Name:lower():find("aim") then c.Value = false end
+					end
+				end
+				for _, obj in ipairs(char:GetDescendants()) do
+					if obj:IsA("NumberValue") and obj.Name:lower():find("sway") then
+						obj.Value = 0
+					end
+				end
+			end
+			task.wait()
+		end
+	end)
+end
+
+--==============================================================
+-- TRIGGER BOT
+--==============================================================
+local triggerActive = false
+local triggerConn
+
+function enableTriggerBot()
+	triggerActive = true
+	triggerConn = RunService.RenderStepped:Connect(function()
+		if not triggerActive then return end
+		local cam = workspace.CurrentCamera
+		if not cam or not LocalPlayer.Character then return end
+
+		local ray = Ray.new(cam.CFrame.Position, cam.CFrame.LookVector * 1000)
+		local hit = workspace:FindPartOnRay(ray, LocalPlayer.Character)
+		if not hit then return end
+
+		local hum = hit.Parent:FindFirstChildOfClass("Humanoid")
+			or (hit.Parent.Parent and hit.Parent.Parent:FindFirstChildOfClass("Humanoid"))
+		if hum and hum.Health > 0 and hum.Parent ~= LocalPlayer.Character then
+			mouse1press()
+			task.wait(0.05)
+			mouse1release()
+		end
+	end)
+end
+
+function disableTriggerBot()
+	triggerActive = false
+	if triggerConn then triggerConn:Disconnect(); triggerConn = nil end
+end
+
+--==============================================================
+-- INFINITE AMMO
+--==============================================================
+local infAmmoActive = false
+function enableInfiniteAmmo()
+	infAmmoActive = true
+	task.spawn(function()
+		while infAmmoActive do
+			local char = LocalPlayer.Character
+			if char then
+				for _, tool in ipairs(char:GetChildren()) do
+					if tool:IsA("Tool") then
+						local gs = tool:FindFirstChild("GunScript")
+							or tool:FindFirstChild("Gun")
+							or tool:FindFirstChild("WeaponScript")
+						if gs then
+							local ammo = gs:FindFirstChild("ClientAmmo")
+								or gs:FindFirstChild("Ammo")
+								or gs:FindFirstChild("CurrentAmmo")
+							local maxAmmo = gs:FindFirstChild("MaxAmmo")
+								or gs:FindFirstChild("Max")
+								or gs:FindFirstChild("ClipSize")
+							if ammo then
+								ammo.Value = maxAmmo and maxAmmo.Value or 30
+							end
+						end
+					end
+				end
+			end
+			task.wait(0.1)
+		end
+	end)
+end
+
+function disableInfiniteAmmo() infAmmoActive = false end
+
+--==============================================================
+-- INSTANT RELOAD
+--==============================================================
+local instantReloadActive = false
+function setInstantReload(v)
+	if not v then instantReloadActive = false; return end
+	instantReloadActive = true
+	task.spawn(function()
+		while instantReloadActive do
+			local char = LocalPlayer.Character
+			if char then
+				local humanoid = char:FindFirstChildOfClass("Humanoid")
+				if humanoid then
+					for _, track in ipairs(humanoid:GetPlayingAnimationTracks()) do
+						local name = track.Animation and track.Animation.Name:lower() or ""
+						if name:find("reload") or name:find("bolt") or name:find("cock") then
+							track:AdjustSpeed(10)
+						end
+					end
+				end
+			end
+			task.wait(0.05)
+		end
+	end)
+end
+
+--==============================================================
+-- NO SPREAD
+--==============================================================
+local noSpreadActive = false
+local noSpreadConnections = {}
+
+local function patchNoSpread(tool)
+	if not tool:IsA("Tool") then return end
+	local settingsModule = tool:FindFirstChild("Settings")
+	if not settingsModule then return end
+	local ok, config = pcall(require, settingsModule)
+	if not ok or type(config) ~= "table" then return end
+	if config.scatter ~= nil then
+		config.scatter = 0.0001
+	end
+end
+
+local function patchAllNoSpread()
+	local bp = LocalPlayer:FindFirstChild("Backpack")
+	if bp then
+		for _, tool in ipairs(bp:GetChildren()) do patchNoSpread(tool) end
+	end
+	local char = LocalPlayer.Character
+	if char then
+		for _, tool in ipairs(char:GetChildren()) do patchNoSpread(tool) end
+	end
+end
+
+function setNoSpread(v)
+	if not v then
+		noSpreadActive = false
+		for _, conn in ipairs(noSpreadConnections) do pcall(function() conn:Disconnect() end) end
+		noSpreadConnections = {}
+		return
+	end
+	noSpreadActive = true
+	patchAllNoSpread()
+
+	local bp = LocalPlayer:FindFirstChild("Backpack")
+	if bp then
+		table.insert(noSpreadConnections, bp.ChildAdded:Connect(function(tool)
+			task.wait(0.05)
+			if noSpreadActive then patchNoSpread(tool) end
+		end))
+	end
+
+	table.insert(noSpreadConnections, LocalPlayer.CharacterAdded:Connect(function(char)
+		table.insert(noSpreadConnections, char.ChildAdded:Connect(function(tool)
+			task.wait(0.05)
+			if noSpreadActive then patchNoSpread(tool) end
+		end))
+		task.wait(0.5)
+		if noSpreadActive then patchAllNoSpread() end
+	end))
+
+	if LocalPlayer.Character then
+		table.insert(noSpreadConnections, LocalPlayer.Character.ChildAdded:Connect(function(tool)
+			task.wait(0.05)
+			if noSpreadActive then patchNoSpread(tool) end
+		end))
+	end
+end
+
+--==============================================================
+-- CROSSHAIR
+--==============================================================
+local crosshairGui
+function createCrosshair()
+	if crosshairGui then return end
+	crosshairGui = Instance.new("ScreenGui")
+	crosshairGui.Name = "Crosshair"
+	crosshairGui.ResetOnSpawn = false
+	crosshairGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+
+	local dot = Instance.new("Frame")
+	dot.Size = UDim2.new(0, 4, 0, 4)
+	dot.Position = UDim2.new(0.5, -2, 0.5, -32)
+	dot.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+	dot.BorderSizePixel = 0
+	dot.Parent = crosshairGui
+	Instance.new("UICorner", dot).CornerRadius = UDim.new(1, 0)
+end
+
+function removeCrosshair()
+	if crosshairGui then crosshairGui:Destroy(); crosshairGui = nil end
+end
+
+--==============================================================
+-- SILENT AIM
+--==============================================================
+local RANDOM_PARTS = {
+	"Head", "UpperTorso", "LowerTorso", "HumanoidRootPart",
+	"LeftUpperArm", "RightUpperArm", "LeftLowerArm", "RightLowerArm",
+	"LeftUpperLeg", "RightUpperLeg", "LeftLowerLeg", "RightLowerLeg"
+}
+
+local lastTargetPart = {}
+local silentTarget
+
+local function pickRandomPart(char)
+	local available = {}
+	for _, name in ipairs(RANDOM_PARTS) do
+		local p = char:FindFirstChild(name)
+		if p and p:IsA("BasePart") then
+			table.insert(available, p)
+		end
+	end
+	if #available == 0 then return nil end
+	return available[math.random(1, #available)]
+end
+
+local function getSilentTarget()
+	local myChar = LocalPlayer.Character
+	if not myChar then return nil end
+
+	local cam = workspace.CurrentCamera
+	if not cam then return nil end
+
+	local myRoot = myChar:FindFirstChild("HumanoidRootPart")
+	if not myRoot then return nil end
+
+	local mousePos = UserInputService:GetMouseLocation()
+	local camPos = cam.CFrame.Position
+
+	local bestPart = nil
+	local bestScore = math.huge
+
+	for _, plr in ipairs(Players:GetPlayers()) do
+		if plr == LocalPlayer then continue end
+		if Settings.SilentAimIgnoreFriends and LocalPlayer:IsFriendsWith(plr.UserId) then continue end
+
+		local char = plr.Character
+		if not char then continue end
+		local hum = char:FindFirstChildOfClass("Humanoid")
+		if not hum or hum.Health <= 0 then continue end
+
+		local part
+		if Settings.SilentAimRandomPart then
+			local cached = lastTargetPart[plr]
+			if cached and cached.Parent == char then
+				part = cached
+			else
+				part = pickRandomPart(char)
+				lastTargetPart[plr] = part
+			end
+		else
+			part = char:FindFirstChild(Settings.SilentAimPart) or char:FindFirstChild("Head")
+		end
+		if not part then continue end
+
+		if Settings.SilentAimWallCheck then
+			local params = RaycastParams.new()
+			params.FilterDescendantsInstances = { myChar, cam }
+			params.FilterType = Enum.RaycastFilterType.Blacklist
+			params.IgnoreWater = true
+
+			local dir = part.Position - camPos
+			local result = workspace:Raycast(camPos, dir, params)
+			if result and result.Instance and not result.Instance:IsDescendantOf(char) then
+				if (result.Position - camPos).Magnitude < dir.Magnitude - 1 then
+					continue
+				end
+			end
+		end
+
+		local screenPos, onScreen = cam:WorldToViewportPoint(part.Position)
+		if not onScreen then continue end
+
+		local fovDist = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
+		if fovDist > Settings.SilentAimFOV then continue end
+
+		local score
+		if Settings.SilentAimPriority == "Distance" then
+			score = (part.Position - myRoot.Position).Magnitude
+		elseif Settings.SilentAimPriority == "Health" then
+			score = hum.Health
+		else
+			score = fovDist
+		end
+
+		if score < bestScore then
+			bestScore = score
+			bestPart = part
+		end
+	end
+
+	for plr, part in pairs(lastTargetPart) do
+		if not plr.Parent or not plr.Character or part.Parent ~= plr.Character then
+			lastTargetPart[plr] = nil
+		end
+	end
+
+	return bestPart
+end
+
+RunService.RenderStepped:Connect(function()
+	if Settings.SilentAim then
+		local ok, target = pcall(getSilentTarget)
+		silentTarget = ok and target or nil
+	else
+		silentTarget = nil
+	end
+end)
+
+local oldNamecall
+oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
+	local method = getnamecallmethod()
+
+	if method == "Raycast" and self == Workspace
+		and Settings.SilentAim and silentTarget and silentTarget.Parent then
+		local args = { ... }
+		local origin = args[1]
+		local direction = args[2]
+		if origin and direction then
+			args[2] = (silentTarget.Position - origin).Unit * direction.Magnitude
+			return oldNamecall(self, unpack(args))
+		end
+	end
+
+	return oldNamecall(self, ...)
+end))
+
+--==============================================================
+-- RESPAWN
+--==============================================================
+LocalPlayer.CharacterRemoving:Connect(function()
+	silentTarget = nil
+end)
+
+LocalPlayer.CharacterAdded:Connect(function()
+	silentTarget = nil
+	task.wait(0.5)
+	if crosshairGui and not crosshairGui.Parent then
+		crosshairGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+	end
+	pcall(updateFOVCircle)
+end)
