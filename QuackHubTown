@@ -1,10 +1,9 @@
 --==============================================================
--- QuackUI · Town (full)
--- Lib + AC bypass + Loader + Combat / Visuals / Misc
+-- QuackHub · Town (full)
 --==============================================================
 
 local Library = loadstring(game:HttpGet(
-	"https://raw.githubusercontent.com/Dyinka/QuackUI/refs/heads/main/QuackUI.lua"
+	"https://raw.githubusercontent.com/Lu4ikk1/CryoHubLib/refs/heads/main/CryoLibReBirth?t=" .. tostring(tick())
 ))()
 
 local Players          = game:GetService("Players")
@@ -44,13 +43,12 @@ local function save()
 	_G.UltimateSettings = Settings
 end
 
--- forward decls
 local updateFOVCircle, setNoRecoil, setNoSway, enableTriggerBot, disableTriggerBot
 local enableInfiniteAmmo, disableInfiniteAmmo, setInstantReload, setNoSpread
 local enableESP, disableESP, setFullBright, setNoFog, createCrosshair, removeCrosshair
 
 --==============================================================
--- AC BYPASS (Detected → yield, Kill → nop)
+-- AC BYPASS
 --==============================================================
 local function runAntiCheatBypass()
 	task.wait(0.5)
@@ -95,7 +93,7 @@ local function runAntiCheatBypass()
 end
 
 --==============================================================
--- LOADER → WINDOW
+-- LOADER
 --==============================================================
 Library:CreateLoader({
 	Title      = "QuackHub",
@@ -106,16 +104,16 @@ Library:CreateLoader({
 	FloatImage = "rbxassetid://71109437053861",
 
 	Texts = {
-		{ Text = "Checking environment...", Duration = 0.45 },
+		{ Text = "Checking environment...", Duration = 0.4 },
 		{
-			Text = "Bypassing protections...",
-			Duration = 1.1,
+			Text = "Bypassing anti-cheat",
+			Duration = 1.15,
 			Callback = function()
 				pcall(runAntiCheatBypass)
 			end,
 		},
-		{ Text = "Loading modules...", Duration = 0.5 },
-		{ Text = "Building UI...", Duration = 0.45 },
+		{ Text = "Loading modules...", Duration = 0.45 },
+		{ Text = "Building UI...", Duration = 0.4 },
 	},
 
 	FinishText = "Ready",
@@ -124,12 +122,12 @@ Library:CreateLoader({
 		pcall(runAntiCheatBypass)
 
 		local Window = Library:CreateWindow({
-			Title            = "Quack Hub",
+			Title            = "QuackHub",
 			Theme            = "Charcoal",
 			Width            = 800,
 			Height           = 560,
 			ToggleKey        = Settings.UIKey or Enum.KeyCode.K,
-			Watermark        = "QuackHub · Town",
+			Watermark        = "QuackHub",
 			ShowWatermark    = true,
 			ShowDropButton   = true,
 			SoundEnabled     = true,
@@ -139,11 +137,12 @@ Library:CreateLoader({
 		})
 
 		--======================================================
-		-- COMBAT
+		-- COMBAT  (aim → options → weapon)
 		--======================================================
 		local Combat = Window:CreateTab("Combat", "rbxassetid://10709751939")
-		Combat:CreateSection("Silent Aim")
 
+		-- master + hotkey
+		Combat:CreateSection("Silent Aim")
 		local silentAimToggle
 		local function setSilentAim(v)
 			if Settings.SilentAim == v then return end
@@ -154,7 +153,8 @@ Library:CreateLoader({
 		end
 
 		silentAimToggle = Combat:CreateToggle({
-			Title = "Silent Aim",
+			Title = "Enabled",
+			Description = "Redirect raycasts to target",
 			Default = Settings.SilentAim,
 			Flag = "SilentAim",
 			Callback = function(v)
@@ -167,7 +167,7 @@ Library:CreateLoader({
 		})
 
 		Combat:CreateKeybind({
-			Title = "Silent Aim Hotkey",
+			Title = "Hotkey",
 			Default = Settings.SilentAimKey,
 			Flag = "SilentAimKey",
 			Callback = function(key)
@@ -177,6 +177,8 @@ Library:CreateLoader({
 			end,
 		})
 
+		-- targeting
+		Combat:CreateSection("Targeting")
 		Combat:CreateSlider({
 			Title = "FOV",
 			Min = 10, Max = 500,
@@ -200,19 +202,22 @@ Library:CreateLoader({
 			end,
 		})
 
-		Combat:CreateToggle({
-			Title = "Random Body Part",
-			Default = Settings.SilentAimRandomPart,
-			Flag = "SilentAimRandomPart",
-			Callback = function(v) Settings.SilentAimRandomPart = v; save() end,
-		})
-
 		Combat:CreateDropdown({
 			Title = "Priority",
 			Options = { "FOV", "Distance", "Health" },
 			Default = Settings.SilentAimPriority,
 			Flag = "SilentAimPriority",
-			Callback = function(v) Settings.SilentAimPriority = v; save() end,
+			Callback = function(v)
+				Settings.SilentAimPriority = v
+				save()
+			end,
+		})
+
+		Combat:CreateToggle({
+			Title = "Random Body Part",
+			Default = Settings.SilentAimRandomPart,
+			Flag = "SilentAimRandomPart",
+			Callback = function(v) Settings.SilentAimRandomPart = v; save() end,
 		})
 
 		Combat:CreateToggle({
@@ -229,8 +234,10 @@ Library:CreateLoader({
 			Callback = function(v) Settings.SilentAimIgnoreFriends = v; save() end,
 		})
 
+		-- FOV draw
+		Combat:CreateSection("FOV Circle")
 		Combat:CreateToggle({
-			Title = "FOV Circle",
+			Title = "Show Circle",
 			Default = Settings.SilentAimFOVCircle,
 			Flag = "SilentAimFOVCircle",
 			Callback = function(v)
@@ -241,7 +248,7 @@ Library:CreateLoader({
 		})
 
 		Combat:CreateColorPicker({
-			Title = "FOV Color",
+			Title = "Circle Color",
 			Default = Settings.SilentAimFOVColor,
 			Flag = "SilentAimFOVColor",
 			Callback = function(c)
@@ -251,6 +258,7 @@ Library:CreateLoader({
 			end,
 		})
 
+		-- weapon mods
 		Combat:CreateSection("Weapon")
 		Combat:CreateToggle({
 			Title = "No Recoil",
@@ -263,6 +271,12 @@ Library:CreateLoader({
 			Default = Settings.NoSway,
 			Flag = "NoSway",
 			Callback = function(v) Settings.NoSway = v; save(); setNoSway(v) end,
+		})
+		Combat:CreateToggle({
+			Title = "No Spread",
+			Default = Settings.NoSpread,
+			Flag = "NoSpread",
+			Callback = function(v) Settings.NoSpread = v; save(); setNoSpread(v) end,
 		})
 		Combat:CreateToggle({
 			Title = "Trigger Bot",
@@ -290,20 +304,16 @@ Library:CreateLoader({
 			Flag = "InstantReload",
 			Callback = function(v) Settings.InstantReload = v; save(); setInstantReload(v) end,
 		})
-		Combat:CreateToggle({
-			Title = "No Spread",
-			Default = Settings.NoSpread,
-			Flag = "NoSpread",
-			Callback = function(v) Settings.NoSpread = v; save(); setNoSpread(v) end,
-		})
 
 		--======================================================
-		-- VISUALS
+		-- VISUALS  (ESP master → info → color)
 		--======================================================
 		local Visuals = Window:CreateTab("Visuals", "rbxassetid://10723346959")
+
 		Visuals:CreateSection("ESP")
 		Visuals:CreateToggle({
-			Title = "ESP",
+			Title = "Enabled",
+			Description = "Highlight other players",
 			Default = Settings.ESP,
 			Flag = "ESP",
 			Callback = function(v)
@@ -312,11 +322,13 @@ Library:CreateLoader({
 				if v then enableESP() else disableESP() end
 			end,
 		})
-		Visuals:CreateColorPicker({
-			Title = "ESP Color",
-			Default = Settings.ESPColor,
-			Flag = "ESPColor",
-			Callback = function(c) Settings.ESPColor = c; save() end,
+
+		Visuals:CreateSection("Labels")
+		Visuals:CreateToggle({
+			Title = "Show Name",
+			Default = Settings.ESPShowName,
+			Flag = "ESPShowName",
+			Callback = function(v) Settings.ESPShowName = v; save() end,
 		})
 		Visuals:CreateToggle({
 			Title = "Show HP",
@@ -325,22 +337,26 @@ Library:CreateLoader({
 			Callback = function(v) Settings.ESPShowHP = v; save() end,
 		})
 		Visuals:CreateToggle({
-			Title = "Show Name",
-			Default = Settings.ESPShowName,
-			Flag = "ESPShowName",
-			Callback = function(v) Settings.ESPShowName = v; save() end,
-		})
-		Visuals:CreateToggle({
 			Title = "Show Distance",
 			Default = Settings.ESPShowDistance,
 			Flag = "ESPShowDistance",
 			Callback = function(v) Settings.ESPShowDistance = v; save() end,
 		})
 
+		Visuals:CreateSection("Style")
+		Visuals:CreateColorPicker({
+			Title = "ESP Color",
+			Default = Settings.ESPColor,
+			Flag = "ESPColor",
+			Callback = function(c) Settings.ESPColor = c; save() end,
+		})
+
 		--======================================================
-		-- MISC
+		-- MISC  (world → overlay → key)
 		--======================================================
 		local Misc = Window:CreateTab("Misc", "rbxassetid://10709769123")
+
+		Misc:CreateSection("World")
 		Misc:CreateToggle({
 			Title = "Full Bright",
 			Default = Settings.FullBright,
@@ -353,6 +369,8 @@ Library:CreateLoader({
 			Flag = "NoFog",
 			Callback = function(v) Settings.NoFog = v; save(); setNoFog(v) end,
 		})
+
+		Misc:CreateSection("Overlay")
 		Misc:CreateToggle({
 			Title = "Crosshair",
 			Default = Settings.Crosshair,
@@ -364,28 +382,39 @@ Library:CreateLoader({
 			end,
 		})
 
-		local Info = Window:CreateTab("Info", "rbxassetid://10709752035")
-		Info:CreateSection("Credits")
-		Info:CreateButton({
-			Title = "Thanks You Lu4ikk1",
-			Callback = function()
-				Window:Notify("QuackHub", "Town build", 2)
-			end,
-		})
-		Info:CreateKeybind({
-			Title = "UI Key",
+		Misc:CreateSection("UI")
+		Misc:CreateKeybind({
+			Title = "Toggle Key",
 			Default = Settings.UIKey,
 			Flag = "UIKey",
 			Callback = function(key)
 				Settings.UIKey = key
 				save()
-				Window:Notify("UI Key", "Saved: " .. key.Name, 2.5)
+				Window:Notify("QuackHub", "Key saved: " .. key.Name, 2)
+			end,
+		})
+		Misc:CreateButton({
+			Title = "Test Notification",
+			Callback = function()
+				Window:Notify("QuackHub", "Everything works.", 2.5)
 			end,
 		})
 
-		Window:Notify("QuackHub", "Town ready.", 3)
+		--======================================================
+		-- INFO
+		--======================================================
+		local Info = Window:CreateTab("Info", "rbxassetid://10709752035")
+		Info:CreateSection("About")
+		Info:CreateButton({
+			Title = "QuackHub · Town",
+			Callback = function()
+				Window:Notify("QuackHub", "Mascot: duck 🦆", 2)
+			end,
+		})
 
-		-- restore saved features
+		Window:Notify("QuackHub", "Town ready. Press your toggle key.", 3)
+
+		-- restore
 		if Settings.NoRecoil then setNoRecoil(true) end
 		if Settings.NoSway then setNoSway(true) end
 		if Settings.TriggerBot then enableTriggerBot() end
