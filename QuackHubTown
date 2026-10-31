@@ -3,7 +3,7 @@
 --==============================================================
 
 local Library = loadstring(game:HttpGet(
-	"https://raw.githubusercontent.com/Lu4ikk1/CryoHubLib/refs/heads/main/CryoLibReBirth?t=" .. tostring(tick())
+	"https://raw.githubusercontent.com/Dyinka/QuackUI/refs/heads/main/QuackUI.lua"
 ))()
 
 local Players          = game:GetService("Players")
