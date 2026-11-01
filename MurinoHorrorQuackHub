@@ -1500,7 +1500,7 @@ Library:CreateLoader({
 			ShowDropButton = true,
 		})
 
-		local Main = Window:CreateTab("Main", "rbxassetid://10709751939")
+		local Main = Window:CreateTab("Main", "rbxassetid://102384750306029")
 		Main:CreateSection("Main Features")
 
 		Main:CreateToggle({
@@ -1573,7 +1573,7 @@ Library:CreateLoader({
 			Callback = function(v) setEspItems(v) Window:Notify("Items ESP", v and "On" or "Off", 2) end,
 		})
 
-		local Misc = Window:CreateTab("Misc", "rbxassetid://10709769123")
+		local Misc = Window:CreateTab("Misc", "rbxassetid://137713608713884")
 		Misc:CreateSection("Movement")
 		Misc:CreateSlider({
 			Title = "WalkSpeed", Min = 16, Max = 200, Default = 16, Flag = "WalkSpeed",
