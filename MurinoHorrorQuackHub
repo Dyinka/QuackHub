@@ -30,8 +30,8 @@ local fbOn, fbConn = false, nil
 local oldLighting = {}
 
 local skipOn = false
-local skipCooldown = 0.7
-local skipDelay = 0.7
+local skipCooldown = 0.2
+local skipDelay = 0.65
 local lastSkip = 0
 local skipConn
 local hookedTriggers = {}
