@@ -1,400 +1,284 @@
 --==============================================================
--- Cryo Hub · QuackUI Edition
+-- Cryo Hub · stealth QuackUI
 --==============================================================
-
-local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/Dyinka/QuackUI/refs/heads/main/QuackUI.lua?t=" .. tostring(tick())))()
-
--- [[ STATE MANAGEMENT ]]
-local states = {
-    autoCollect = false,
-    collectRadius = 50,
-    autoRoll = false,
-    autoRebirth = false,
-    rebirthDelay = 15,
-    autoEquipBest = false,
-    autoBuyZone = false,
-    autoClaimIndex = false,
-    autoCollectRecipe = false,
-    walkSpeedValue = 32,
-    antiAFK = false
-}
-
--- [[ REMOTE UTILITIES ]]
+local Library = loadstring(game:HttpGet(
+	"https://raw.githubusercontent.com/Dyinka/QuackUI/refs/heads/main/QuackUI.lua?t=" .. tostring(tick())
+))()
+local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local basePath = {"Packages", "_Index", "leifstout_networker@0.3.1", "networker", "_remotes"}
+local VirtualUser = game:GetService("VirtualUser")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local LocalPlayer = Players.LocalPlayer
 
-local function navigatePath(root, path)
-    local current = root
-    for _, name in ipairs(path) do
-        current = current:FindFirstChild(name)
-        if not current then return nil end
-    end
-    return current
-end
-
-local remotesFolder = navigatePath(ReplicatedStorage, basePath)
-
-local function getRemote(name, remoteType)
-    if not remotesFolder then return nil end
-    local folder = remotesFolder:FindFirstChild(name)
-    if not folder then return nil end
-    return folder:FindFirstChild(remoteType)
-end
-
-local rollRE      = getRemote("RollService", "RemoteEvent")
-local rebirthRF   = getRemote("RebirthService", "RemoteFunction")
-local codeRF      = getRemote("CodeService", "RemoteFunction")
-local indexRF     = getRemote("IndexService", "RemoteFunction")
-local inventoryRF = getRemote("InventoryService", "RemoteFunction")
-local zonesRF     = getRemote("ZonesService", "RemoteFunction")
-
--- [[ ANTI AFK & AUTO REJOIN REMOVAL ]]
-local AntiAfkService = {
-    Active = false,
-    Connection = nil
+local states = {
+	autoCollect = false, collectRadius = 50,
+	autoRoll = false, autoRebirth = false, rebirthDelay = 15,
+	autoEquipBest = false, autoBuyZone = false, autoClaimIndex = false,
+	autoCollectRecipe = false, walkSpeedValue = 32, antiAFK = false,
 }
 
+local basePath = {"Packages", "_Index", "leifstout_networker@0.3.1", "networker", "_remotes"}
+local function navigatePath(root, path)
+	local current = root
+	for _, name in ipairs(path) do
+		current = current:FindFirstChild(name)
+		if not current then return nil end
+	end
+	return current
+end
+local remotesFolder = navigatePath(ReplicatedStorage, basePath)
+local function getRemote(name, remoteType)
+	if not remotesFolder then return nil end
+	local folder = remotesFolder:FindFirstChild(name)
+	return folder and folder:FindFirstChild(remoteType)
+end
+local rollRE = getRemote("RollService", "RemoteEvent")
+local rebirthRF = getRemote("RebirthService", "RemoteFunction")
+local codeRF = getRemote("CodeService", "RemoteFunction")
+local indexRF = getRemote("IndexService", "RemoteFunction")
+local inventoryRF = getRemote("InventoryService", "RemoteFunction")
+local zonesRF = getRemote("ZonesService", "RemoteFunction")
+
+local AntiAfkService = { Active = false, Connection = nil }
 local function removeAutoRejoin()
-    pcall(function()
-        local service = ReplicatedStorage.Packages._Index["leifstout_networker@0.3.1"].networker._remotes.AutoRejoinService
-        if service then service:Destroy() end
-    end)
-    pcall(function()
-        local rejoin = ReplicatedStorage.Source.Features.AutoRejoin
-        if rejoin then rejoin:Destroy() end
-    end)
-    pcall(function()
-        local rejoinAlt = ReplicatedStorage:FindFirstChild("AutoRejoin")
-        if rejoinAlt then rejoinAlt:Destroy() end
-    end)
-    pcall(function()
-        local serviceAlt = ReplicatedStorage:FindFirstChild("AutoRejoinService")
-        if serviceAlt then serviceAlt:Destroy() end
-    end)
+	pcall(function()
+		local service = ReplicatedStorage.Packages._Index["leifstout_networker@0.3.1"].networker._remotes.AutoRejoinService
+		if service then service:Destroy() end
+	end)
+	pcall(function()
+		local rejoin = ReplicatedStorage.Source.Features.AutoRejoin
+		if rejoin then rejoin:Destroy() end
+	end)
+	pcall(function()
+		local a = ReplicatedStorage:FindFirstChild("AutoRejoin")
+		if a then a:Destroy() end
+	end)
+	pcall(function()
+		local s = ReplicatedStorage:FindFirstChild("AutoRejoinService")
+		if s then s:Destroy() end
+	end)
 end
-
 local function startAntiAfk()
-    if AntiAfkService.Active then return end
-    removeAutoRejoin()
-    AntiAfkService.Active = true
-    AntiAfkService.Connection = game:GetService("Players").LocalPlayer.Idled:Connect(function()
-        if AntiAfkService.Active then
-            game:GetService("VirtualUser"):CaptureController()
-            game:GetService("VirtualUser"):ClickButton2(Vector2.new())
-        end
-    end)
+	if AntiAfkService.Active then return end
+	removeAutoRejoin()
+	AntiAfkService.Active = true
+	AntiAfkService.Connection = LocalPlayer.Idled:Connect(function()
+		if AntiAfkService.Active then
+			VirtualUser:CaptureController()
+			VirtualUser:ClickButton2(Vector2.new())
+		end
+	end)
 end
-
 local function stopAntiAfk()
-    if not AntiAfkService.Active then return end
-    AntiAfkService.Active = false
-    if AntiAfkService.Connection then
-        AntiAfkService.Connection:Disconnect()
-        AntiAfkService.Connection = nil
-    end
+	AntiAfkService.Active = false
+	if AntiAfkService.Connection then
+		AntiAfkService.Connection:Disconnect()
+		AntiAfkService.Connection = nil
+	end
 end
 
---==============================================================
--- UI SETUP
---==============================================================
 Library:CreateLoader({
-    Title = "Cryo Hub",
-    Subtitle = "Loading",
-    Theme = "Charcoal",
-    ShowBar = true,
-    FadeTime = 0.3,
-    Texts = {
-        { Text = "Loading...", Duration = 0.4 },
-        { Text = "Ready", Duration = 0.3 },
-    },
-    FinishText = "Done",
-    OnFinish = function()
-        local Window = Library:CreateWindow({
-            Title = "Cryo Hub",
-            Theme = "Charcoal",
-            ToggleKey = Enum.KeyCode.K,
-            Watermark = "Cryo Hub",
-            ShowWatermark = true,
-            ShowDropButton = true,
-        })
-
-        -- [[ TAB: MAIN ]]
-        local MainTab = Window:CreateTab("Main", "rbxassetid://10709751939")
-        MainTab:CreateSection("Main Features")
-
-        MainTab:CreateToggle({
-            Title = "Auto Collect",
-            Description = "Automatically collects loot within radius",
-            Default = false, Flag = "AutoCollect",
-            Callback = function(v)
-                states.autoCollect = v
-                if v then
-                    task.spawn(function()
-                        while states.autoCollect do
-                            local player = game:GetService("Players").LocalPlayer
-                            local char = player.Character
-                            local hrp = char and char:FindFirstChild("HumanoidRootPart")
-                            local lootFolder = workspace:FindFirstChild("Loot")
-                            
-                            if hrp and lootFolder then
-                                for _, lootObject in ipairs(lootFolder:GetChildren()) do
-                                    if not states.autoCollect then break end
-                                    
-                                    local touchPart = nil
-                                    for _, child in ipairs(lootObject:GetChildren()) do
-                                        if (child:IsA("MeshPart") or child:IsA("BasePart")) and child:FindFirstChild("TouchInterest") then
-                                            touchPart = child
-                                            break
-                                        end
-                                    end
-                                    
-                                    if not touchPart then
-                                        local function findTouchPart(parent)
-                                            for _, child in ipairs(parent:GetChildren()) do
-                                                if (child:IsA("MeshPart") or child:IsA("BasePart")) and child:FindFirstChild("TouchInterest") then
-                                                    return child
-                                                end
-                                                if child:IsA("Model") or child:IsA("Folder") then
-                                                    local found = findTouchPart(child)
-                                                    if found then return found end
-                                                end
-                                            end
-                                            return nil
-                                        end
-                                        touchPart = findTouchPart(lootObject)
-                                    end
-                                    
-                                    if touchPart then
-                                        local distance = (hrp.Position - touchPart.Position).Magnitude
-                                        if distance <= states.collectRadius then
-                                            pcall(function()
-                                                firetouchinterest(hrp, touchPart, 0)
-                                                task.wait()
-                                                firetouchinterest(hrp, touchPart, 1)
-                                            end)
-                                            task.wait(0.05)
-                                        end
-                                    end
-                                end
-                            end
-                            task.wait(0.2)
-                        end
-                    end)
-                end
-            end,
-        })
-
-        MainTab:CreateSlider({
-            Title = "Collect Radius", Min = 10, Max = 200, Default = states.collectRadius, Flag = "CollectRadius",
-            Callback = function(v) states.collectRadius = v end,
-        })
-
-        MainTab:CreateToggle({
-            Title = "Auto Roll",
-            Description = "Automatically requests rolls",
-            Default = false, Flag = "AutoRoll",
-            Callback = function(v)
-                states.autoRoll = v
-                if v then
-                    task.spawn(function()
-                        while states.autoRoll do
-                            if rollRE then rollRE:FireServer("requestRoll") end
-                            task.wait(0.1)
-                        end
-                    end)
-                end
-            end,
-        })
-
-        MainTab:CreateToggle({
-            Title = "Auto Rebirth",
-            Description = "Automatically requests rebirth",
-            Default = false, Flag = "AutoRebirth",
-            Callback = function(v)
-                states.autoRebirth = v
-                if v then
-                    task.spawn(function()
-                        while states.autoRebirth do
-                            if rebirthRF then rebirthRF:InvokeServer("requestRebirth") end
-                            task.wait(states.rebirthDelay)
-                        end
-                    end)
-                end
-            end,
-        })
-
-        MainTab:CreateSlider({
-            Title = "Rebirth Delay (sec)", Min = 5, Max = 60, Default = states.rebirthDelay, Flag = "RebirthDelay",
-            Callback = function(v) states.rebirthDelay = v end,
-        })
-
-        MainTab:CreateSection("Other")
-
-        MainTab:CreateToggle({
-            Title = "Auto Equip Best",
-            Description = "Automatically equips best items",
-            Default = false, Flag = "AutoEquipBest",
-            Callback = function(v)
-                states.autoEquipBest = v
-                if v then
-                    task.spawn(function()
-                        while states.autoEquipBest do
-                            if inventoryRF then inventoryRF:InvokeServer("requestEquipBest") end
-                            task.wait(5)
-                        end
-                    end)
-                end
-            end,
-        })
-
-        MainTab:CreateToggle({
-            Title = "Auto Buy Zone",
-            Description = "Automatically purchases zones",
-            Default = false, Flag = "AutoBuyZone",
-            Callback = function(v)
-                states.autoBuyZone = v
-                if v then
-                    task.spawn(function()
-                        while states.autoBuyZone do
-                            if zonesRF then zonesRF:InvokeServer("requestPurchaseZone") end
-                            task.wait(2)
-                        end
-                    end)
-                end
-            end,
-        })
-
-        MainTab:CreateToggle({
-            Title = "Auto Claim Index",
-            Description = "Automatically claims index rewards",
-            Default = false, Flag = "AutoClaimIndex",
-            Callback = function(v)
-                states.autoClaimIndex = v
-                if v then
-                    task.spawn(function()
-                        while states.autoClaimIndex do
-                            for _, category in ipairs({"basic", "big", "huge", "shiny", "inverted"}) do
-                                if indexRF then indexRF:InvokeServer("requestClaimReward", category) end
-                                task.wait(0.2)
-                            end
-                            task.wait(10)
-                        end
-                    end)
-                end
-            end,
-        })
-
-        MainTab:CreateToggle({
-            Title = "Auto Collect Recipe",
-            Description = "Teleports and collects recipes",
-            Default = false, Flag = "AutoCollectRecipe",
-            Callback = function(v)
-                states.autoCollectRecipe = v
-                if v then
-                    task.spawn(function()
-                        while states.autoCollectRecipe do
-                            local zones = workspace:FindFirstChild("Zones")
-                            local hrp = game:GetService("Players").LocalPlayer.Character and game:GetService("Players").LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-                            local VIM = game:GetService("VirtualInputManager")
-                            
-                            if zones and hrp then
-                                local originalCFrame = hrp.CFrame
-                                
-                                for _, zone in pairs(zones:GetChildren()) do
-                                    if not states.autoCollectRecipe then break end
-                                    
-                                    for _, recipeObj in pairs(zone:GetChildren()) do
-                                        if recipeObj.Name:match("^Recipe") then
-                                            local attachment = recipeObj:FindFirstChild("RecipePromptAttachment")
-                                            local prompt = attachment and attachment:FindFirstChild("RecipePrompt")
-                                            
-                                            if prompt then
-                                                local teleportPart = recipeObj:FindFirstChild("MeshPart") or recipeObj:FindFirstChild("Part") or recipeObj
-                                                
-                                                if teleportPart and teleportPart:IsA("BasePart") then
-                                                    pcall(function()
-                                                        prompt.MaxActivationDistance = 99999
-                                                        prompt.HoldDuration = 0
-                                                        hrp.CFrame = teleportPart.CFrame + Vector3.new(0, 3, 0)
-                                                        task.wait(0.2)
-                                                        VIM:SendKeyEvent(true, Enum.KeyCode.E, false, game)
-                                                        task.wait(0.05)
-                                                        VIM:SendKeyEvent(false, Enum.KeyCode.E, false, game)
-                                                        task.wait(0.2)
-                                                    end)
-                                                end
-                                            end
-                                        end
-                                    end
-                                end
-                                
-                                hrp.CFrame = originalCFrame
-                            end
-                            task.wait(30)
-                        end
-                    end)
-                end
-            end,
-        })
-
-        -- [[ TAB: MISC ]]
-        local MiscTab = Window:CreateTab("Misc", "rbxassetid://10709769123")
-        MiscTab:CreateSection("Player")
-
-        MiscTab:CreateSlider({
-            Title = "WalkSpeed", Min = 32, Max = 300, Default = states.walkSpeedValue, Flag = "WalkSpeed",
-            Callback = function(v) states.walkSpeedValue = v end,
-        })
-
-        MiscTab:CreateToggle({
-            Title = "Anti Afk",
-            Description = "Prevents AFK kick and removes Auto Rejoin",
-            Default = false, Flag = "AntiAfk",
-            Callback = function(v)
-                states.antiAFK = v
-                if v then
-                    startAntiAfk()
-                else
-                    stopAntiAfk()
-                end
-            end,
-        })
-
-        MiscTab:CreateSection("Other")
-
-        MiscTab:CreateButton({
-            Title = "Redeem All Codes",
-            Callback = function()
-                if not codeRF then return end
-                for _, code in ipairs({"2muchluck", "test", "gullible"}) do
-                    pcall(function() codeRF:InvokeServer("redeem", code) end)
-                    task.wait(0.5)
-                end
-                Window:Notify("Codes", "Redeemed all codes", 2)
-            end,
-        })
-
-        -- [[ TAB: CREDITS ]]
-        local CreditsTab = Window:CreateTab("Credits", "rbxassetid://10709751939")
-        CreditsTab:CreateSection("Creator: Powder")
-        CreditsTab:CreateSection("UI: Lu4ikk1")
-        CreditsTab:CreateSection("Thanks for using Cryo Hub!")
-
-        Window:Notify("Cryo Hub", "Successfully loaded!", 3)
-    end,
+	Title = "Hub", Subtitle = "Loading", Theme = "Charcoal", ShowBar = true, FadeTime = 0.3,
+	Texts = { { Text = "Loading...", Duration = 0.4 }, { Text = "Ready", Duration = 0.3 } },
+	FinishText = "Done",
+	OnFinish = function()
+		local Window = Library:CreateWindow({
+			Title = "Hub", Theme = "Charcoal", ToggleKey = Enum.KeyCode.K,
+			Stealth = true, ShowWatermark = false, ShowDropButton = false, UseCustomFont = false,
+		})
+		local MainTab = Window:CreateTab("Main", "rbxassetid://10709751939")
+		MainTab:CreateSection("Main Features")
+		MainTab:CreateToggle({
+			Title = "Auto Collect", Description = "Loot within radius", Default = false, Flag = "AutoCollect",
+			Callback = function(v)
+				states.autoCollect = v
+				if not v then return end
+				task.spawn(function()
+					while states.autoCollect do
+						local char = LocalPlayer.Character
+						local hrp = char and char:FindFirstChild("HumanoidRootPart")
+						local lootFolder = workspace:FindFirstChild("Loot")
+						if hrp and lootFolder then
+							for _, lootObject in ipairs(lootFolder:GetChildren()) do
+								if not states.autoCollect then break end
+								local touchPart
+								for _, child in ipairs(lootObject:GetDescendants()) do
+									if (child:IsA("MeshPart") or child:IsA("BasePart")) and child:FindFirstChild("TouchInterest") then
+										touchPart = child
+										break
+									end
+								end
+								if touchPart and (hrp.Position - touchPart.Position).Magnitude <= states.collectRadius then
+									pcall(function()
+										firetouchinterest(hrp, touchPart, 0)
+										task.wait()
+										firetouchinterest(hrp, touchPart, 1)
+									end)
+									task.wait(0.05)
+								end
+							end
+						end
+						task.wait(0.2)
+					end
+				end)
+			end,
+		})
+		MainTab:CreateSlider({
+			Title = "Collect Radius", Min = 10, Max = 200, Default = 50, Flag = "CollectRadius",
+			Callback = function(v) states.collectRadius = v end,
+		})
+		MainTab:CreateToggle({
+			Title = "Auto Roll", Default = false, Flag = "AutoRoll",
+			Callback = function(v)
+				states.autoRoll = v
+				if not v then return end
+				task.spawn(function()
+					while states.autoRoll do
+						if rollRE then rollRE:FireServer("requestRoll") end
+						task.wait(0.1)
+					end
+				end)
+			end,
+		})
+		MainTab:CreateToggle({
+			Title = "Auto Rebirth", Default = false, Flag = "AutoRebirth",
+			Callback = function(v)
+				states.autoRebirth = v
+				if not v then return end
+				task.spawn(function()
+					while states.autoRebirth do
+						if rebirthRF then rebirthRF:InvokeServer("requestRebirth") end
+						task.wait(states.rebirthDelay)
+					end
+				end)
+			end,
+		})
+		MainTab:CreateSlider({
+			Title = "Rebirth Delay (sec)", Min = 5, Max = 60, Default = 15, Flag = "RebirthDelay",
+			Callback = function(v) states.rebirthDelay = v end,
+		})
+		MainTab:CreateSection("Other")
+		MainTab:CreateToggle({
+			Title = "Auto Equip Best", Default = false, Flag = "AutoEquipBest",
+			Callback = function(v)
+				states.autoEquipBest = v
+				if not v then return end
+				task.spawn(function()
+					while states.autoEquipBest do
+						if inventoryRF then inventoryRF:InvokeServer("requestEquipBest") end
+						task.wait(5)
+					end
+				end)
+			end,
+		})
+		MainTab:CreateToggle({
+			Title = "Auto Buy Zone", Default = false, Flag = "AutoBuyZone",
+			Callback = function(v)
+				states.autoBuyZone = v
+				if not v then return end
+				task.spawn(function()
+					while states.autoBuyZone do
+						if zonesRF then zonesRF:InvokeServer("requestPurchaseZone") end
+						task.wait(2)
+					end
+				end)
+			end,
+		})
+		MainTab:CreateToggle({
+			Title = "Auto Claim Index", Default = false, Flag = "AutoClaimIndex",
+			Callback = function(v)
+				states.autoClaimIndex = v
+				if not v then return end
+				task.spawn(function()
+					while states.autoClaimIndex do
+						for _, category in ipairs({"basic", "big", "huge", "shiny", "inverted"}) do
+							if indexRF then indexRF:InvokeServer("requestClaimReward", category) end
+							task.wait(0.2)
+						end
+						task.wait(10)
+					end
+				end)
+			end,
+		})
+		MainTab:CreateToggle({
+			Title = "Auto Collect Recipe", Default = false, Flag = "AutoCollectRecipe",
+			Callback = function(v)
+				states.autoCollectRecipe = v
+				if not v then return end
+				task.spawn(function()
+					while states.autoCollectRecipe do
+						local zones = workspace:FindFirstChild("Zones")
+						local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+						if zones and hrp then
+							local originalCFrame = hrp.CFrame
+							for _, zone in pairs(zones:GetChildren()) do
+								if not states.autoCollectRecipe then break end
+								for _, recipeObj in pairs(zone:GetChildren()) do
+									if recipeObj.Name:match("^Recipe") then
+										local attachment = recipeObj:FindFirstChild("RecipePromptAttachment")
+										local prompt = attachment and attachment:FindFirstChild("RecipePrompt")
+										if prompt then
+											local teleportPart = recipeObj:FindFirstChild("MeshPart") or recipeObj:FindFirstChild("Part") or recipeObj
+											if teleportPart and teleportPart:IsA("BasePart") then
+												pcall(function()
+													prompt.MaxActivationDistance = 99999
+													prompt.HoldDuration = 0
+													hrp.CFrame = teleportPart.CFrame + Vector3.new(0, 3, 0)
+													task.wait(0.2)
+													VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
+													task.wait(0.05)
+													VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
+													task.wait(0.2)
+												end)
+											end
+										end
+									end
+								end
+							end
+							hrp.CFrame = originalCFrame
+						end
+						task.wait(30)
+					end
+				end)
+			end,
+		})
+		local MiscTab = Window:CreateTab("Misc", "rbxassetid://10709769123")
+		MiscTab:CreateSection("Player")
+		MiscTab:CreateSlider({
+			Title = "WalkSpeed", Min = 32, Max = 300, Default = 32, Flag = "WalkSpeed",
+			Callback = function(v) states.walkSpeedValue = v end,
+		})
+		MiscTab:CreateToggle({
+			Title = "Anti Afk", Description = "Prevents AFK kick", Default = false, Flag = "AntiAfk",
+			Callback = function(v)
+				states.antiAFK = v
+				if v then startAntiAfk() else stopAntiAfk() end
+			end,
+		})
+		MiscTab:CreateSection("Other")
+		MiscTab:CreateButton({
+			Title = "Redeem All Codes",
+			Callback = function()
+				if not codeRF then return end
+				for _, code in ipairs({"2muchluck", "test", "gullible"}) do
+					pcall(function() codeRF:InvokeServer("redeem", code) end)
+					task.wait(0.5)
+				end
+				Window:Notify("Codes", "Redeemed", 2)
+			end,
+		})
+		local CreditsTab = Window:CreateTab("Credits", "rbxassetid://10709751939")
+		CreditsTab:CreateSection("Creator: Powder")
+		CreditsTab:CreateSection("UI: Quack")
+		Window:Notify("Hub", "Ready", 3)
+	end,
 })
 
---==============================================================
--- BACKGROUND SYSTEMS
---==============================================================
 task.spawn(function()
-    while task.wait(1) do
-        pcall(function()
-            local char = game:GetService("Players").LocalPlayer.Character
-            local humanoid = char and char:FindFirstChildOfClass("Humanoid")
-            if humanoid then
-                humanoid.WalkSpeed = states.walkSpeedValue
-            end
-        end)
-    end
+	while task.wait(1) do
+		pcall(function()
+			local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+			if hum then hum.WalkSpeed = states.walkSpeedValue end
+		end)
+	end
 end)
