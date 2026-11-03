@@ -78,12 +78,12 @@ local function stopAntiAfk()
 end
 
 Library:CreateLoader({
-	Title = "Hub", Subtitle = "Loading", Theme = "Charcoal", ShowBar = true, FadeTime = 0.3,
+	Title = "QuackHub", Subtitle = "Slime RNG", Theme = "Charcoal", ShowBar = true, FadeTime = 0.3,
 	Texts = { { Text = "Loading...", Duration = 0.4 }, { Text = "Ready", Duration = 0.3 } },
 	FinishText = "Done",
 	OnFinish = function()
 		local Window = Library:CreateWindow({
-			Title = "Hub", Theme = "Charcoal", ToggleKey = Enum.KeyCode.K,
+			Title = "QuackHub", Theme = "Charcoal", ToggleKey = Enum.KeyCode.K,
 			Stealth = true, ShowWatermark = false, ShowDropButton = false, UseCustomFont = false,
 		})
 		local MainTab = Window:CreateTab("Main", "rbxassetid://10709751939")
@@ -270,7 +270,7 @@ Library:CreateLoader({
 		local CreditsTab = Window:CreateTab("Credits", "rbxassetid://10709751939")
 		CreditsTab:CreateSection("Creator: Powder")
 		CreditsTab:CreateSection("UI: Quack")
-		Window:Notify("Hub", "Ready", 3)
+		Window:Notify("QuackHub", "Succeful", 3)
 	end,
 })
 
