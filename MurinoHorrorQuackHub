@@ -1018,12 +1018,12 @@ if deathEvent then
 end
 
 Library:CreateLoader({
-	Title = "Hub", Subtitle = "Loading", Theme = "Charcoal", ShowBar = true, FadeTime = 0.3,
+	Title = "QuackHub", Subtitle = "Murino Horror", Theme = "Charcoal", ShowBar = true, FadeTime = 0.3,
 	Texts = { { Text = "Loading...", Duration = 0.4 }, { Text = "Ready", Duration = 0.3 } },
 	FinishText = "Done",
 	OnFinish = function()
 		local Window = Library:CreateWindow({
-			Title = "Hub", Theme = "Charcoal", ToggleKey = Enum.KeyCode.K,
+			Title = "QuackHub", Theme = "Charcoal", ToggleKey = Enum.KeyCode.K,
 			Stealth = true, ShowWatermark = false, ShowDropButton = false, UseCustomFont = false,
 		})
 		local Main = Window:CreateTab("Main", "rbxassetid://102384750306029")
