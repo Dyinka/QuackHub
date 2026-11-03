@@ -1,6 +1,3 @@
---==============================================================
--- QuackHub · Instant Throw / Equip / Upgrades / Buy / Sell / Train
---==============================================================
 local function loadLibrary()
 	local url = "https://raw.githubusercontent.com/Dyinka/QuackUI/refs/heads/main/QuackUI.lua?t=" .. tostring(os.clock())
 	local src
