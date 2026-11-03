@@ -75,7 +75,7 @@ local function runAntiCheatBypass()
 end
 
 Library:CreateLoader({
-	Title = "Hub", Subtitle = "Town", Theme = "Charcoal", ShowBar = true, FadeTime = 0.35,
+	Title = "QuackHub", Subtitle = "Town", Theme = "Charcoal", ShowBar = true, FadeTime = 0.35,
 	Texts = {
 		{ Text = "Checking...", Duration = 0.4 },
 		{ Text = "AC", Duration = 1.0, Callback = function() pcall(runAntiCheatBypass) end },
@@ -86,7 +86,7 @@ Library:CreateLoader({
 	OnFinish = function()
 		pcall(runAntiCheatBypass)
 		local Window = Library:CreateWindow({
-			Title = "Hub", Theme = "Charcoal", Width = 800, Height = 560,
+			Title = "QuackHub", Theme = "Charcoal", Width = 800, Height = 560,
 			ToggleKey = Settings.UIKey or Enum.KeyCode.K,
 			Stealth = true, ShowWatermark = false, ShowDropButton = false,
 			UseCustomFont = false, SoundEnabled = true, MainTransparency = 0.22,
@@ -235,21 +235,21 @@ Library:CreateLoader({
 			Title = "Toggle Key", Default = Settings.UIKey, Flag = "UIKey",
 			Callback = function(key)
 				Settings.UIKey = key save()
-				Window:Notify("Hub", "Key: " .. key.Name, 2)
+				Window:Notify("QuackHub", "Key: " .. key.Name, 2)
 			end,
 		})
 		Misc:CreateButton({
 			Title = "Test Notification",
-			Callback = function() Window:Notify("Hub", "OK", 2) end,
+			Callback = function() Window:Notify("QuackHub", "OK", 2) end,
 		})
 
 		local Info = Window:CreateTab("Info", "rbxassetid://10709752035")
 		Info:CreateSection("About")
 		Info:CreateButton({
-			Title = "Town Hub",
-			Callback = function() Window:Notify("Hub", "Ready", 2) end,
+			Title = "Quack Hub",
+			Callback = function() Window:Notify("QuackHub", "Ready", 2) end,
 		})
-		Window:Notify("Hub", "Town ready", 3)
+		Window:Notify("QuackHub", "Succeful", 3)
 
 		if Settings.NoRecoil then setNoRecoil(true) end
 		if Settings.NoSway then setNoSway(true) end
