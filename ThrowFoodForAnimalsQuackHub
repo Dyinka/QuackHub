@@ -1,0 +1,1122 @@
+--==============================================================
+-- QuackHub · Instant Throw / Equip / Upgrades / Buy / Sell / Train
+--==============================================================
+local function loadLibrary()
+	local url = "https://raw.githubusercontent.com/Dyinka/QuackUI/refs/heads/main/QuackUI.lua?t=" .. tostring(os.clock())
+	local src
+	local okGet, getRes = pcall(function() return game:HttpGet(url) end)
+	if okGet and type(getRes) == "string" and #getRes > 100 then
+		src = getRes
+	else
+		okGet, getRes = pcall(function()
+			return game:HttpGet("https://raw.githubusercontent.com/Dyinka/QuackUI/refs/heads/main/QuackUI.lua")
+		end)
+		if okGet and type(getRes) == "string" and #getRes > 100 then
+			src = getRes
+		end
+	end
+	if not src then
+		error("[Hub] HttpGet failed — cannot download QuackUI.")
+	end
+	local loader = loadstring or load
+	if type(loader) ~= "function" then
+		error("[Hub] loadstring/load is nil in this executor.")
+	end
+	local okLoad, fnOrErr, errMsg = pcall(loader, src, "=QuackUI")
+	if not okLoad then
+		error("[Hub] loadstring threw: " .. tostring(fnOrErr))
+	end
+	if type(fnOrErr) ~= "function" then
+		error("[Hub] QuackUI syntax error: " .. tostring(errMsg))
+	end
+	local okRun, libOrErr = pcall(fnOrErr)
+	if not okRun then
+		error("[Hub] QuackUI runtime error: " .. tostring(libOrErr))
+	end
+	if type(libOrErr) ~= "table" then
+		error("[Hub] QuackUI did not return Library table.")
+	end
+	return libOrErr
+end
+
+local Library = loadLibrary()
+
+local Players           = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local VirtualUser       = game:GetService("VirtualUser")
+local LocalPlayer       = Players.LocalPlayer
+
+-- state
+local autoThrow, autoEquipBest = false, false
+local autoBuy, autoSell, autoTrain = false, false, false
+local autoUpStand, autoUpFence = false, false
+local antiAfk = false
+
+local equipBestDelay     = 0.5
+local sellDelay          = 0.5
+local buyDelay           = 0.5
+local buyLoopWait        = 1.5
+local upgradeDelay       = 0.5
+
+local throwLoopRunning, equipLoopRunning = false, false
+local sellLoopRunning, buyLoopRunning = false, false
+local standUpLoopRunning, fenceUpLoopRunning = false, false
+local trainLoopRunning, trainClickRunning = false, false
+local antiAfkConn = nil
+
+local notifyWindow = nil
+local debugThrow = false
+
+local ClientState, Remotes, ThrowController
+local DataController, AnimalEconomy, FoodsConfig, TrainingController
+local StandsConfig, FenceConfig
+local oldThrowStart = nil
+
+local _crossLineCached = nil
+local _pastLine = false
+local _powerSet = false
+local _lastThrowAt = 0
+local _cooldownEstimate = 1.5
+local _cooldownStrikes = 0
+
+local sellRarities = {
+	Common = true, Uncommon = true, Rare = false, Epic = false,
+	Legendary = false, Mythic = false, Secret = false, Divine = false,
+	Celestial = false, Eternal = false, Cosmic = false, Supreme = false,
+}
+local RARITY_ORDER = {
+	"Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythic",
+	"Secret", "Divine", "Celestial", "Eternal", "Cosmic", "Supreme",
+}
+
+local sellMutations = {}
+local MUTATION_ORDER = {
+	"Gold", "Diamond", "Emerald", "Ruby", "Rainbow", "None",
+}
+
+--==============================================================
+-- RESOLVERS
+--==============================================================
+local function controllersFolder()
+	local ps = LocalPlayer:FindFirstChild("PlayerScripts")
+	local client = ps and ps:FindFirstChild("Client")
+	return client and client:FindFirstChild("Controllers")
+end
+
+local function resolveRemotes()
+	if Remotes then return true end
+	return pcall(function()
+		Remotes = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Remotes"))
+	end) and Remotes ~= nil
+end
+
+local function resolveThrowMods()
+	resolveRemotes()
+	pcall(function()
+		local folder = controllersFolder()
+		if folder then
+			if not ClientState then
+				ClientState = require(folder:WaitForChild("ClientState"))
+			end
+			if not ThrowController then
+				ThrowController = require(folder:WaitForChild("ThrowController"))
+			end
+		end
+	end)
+	return Remotes ~= nil and ClientState ~= nil and ThrowController ~= nil
+end
+
+local function resolveSellMods()
+	resolveRemotes()
+	pcall(function()
+		if not DataController then
+			local folder = controllersFolder()
+			if folder then DataController = require(folder:WaitForChild("DataController")) end
+		end
+		if not AnimalEconomy then
+			AnimalEconomy = require(ReplicatedStorage:WaitForChild("Config"):WaitForChild("AnimalEconomy"))
+		end
+	end)
+	return Remotes ~= nil and DataController ~= nil
+end
+
+local function resolveBuyMods()
+	resolveRemotes()
+	pcall(function()
+		if not DataController then
+			local folder = controllersFolder()
+			if folder then DataController = require(folder:WaitForChild("DataController")) end
+		end
+		if not FoodsConfig then
+			FoodsConfig = require(ReplicatedStorage:WaitForChild("Config"):WaitForChild("FoodsConfig"))
+		end
+	end)
+	return Remotes ~= nil and DataController ~= nil and FoodsConfig ~= nil
+end
+
+local function resolveTrainMods()
+	resolveRemotes()
+	pcall(function()
+		local folder = controllersFolder()
+		if not DataController and folder then
+			DataController = require(folder:WaitForChild("DataController"))
+		end
+		if not TrainingController and folder then
+			TrainingController = require(folder:WaitForChild("TrainingController"))
+		end
+		if not ClientState and folder then
+			ClientState = require(folder:WaitForChild("ClientState"))
+		end
+	end)
+	return Remotes ~= nil and TrainingController ~= nil
+end
+
+local function resolveUpgradeMods()
+	resolveRemotes()
+	pcall(function()
+		local folder = controllersFolder()
+		if not DataController and folder then
+			DataController = require(folder:WaitForChild("DataController"))
+		end
+		if not ClientState and folder then
+			ClientState = require(folder:WaitForChild("ClientState"))
+		end
+		if not StandsConfig then
+			StandsConfig = require(ReplicatedStorage:WaitForChild("Config"):WaitForChild("StandsConfig"))
+		end
+		if not FenceConfig then
+			FenceConfig = require(ReplicatedStorage:WaitForChild("Config"):WaitForChild("FenceConfig"))
+		end
+	end)
+	return Remotes ~= nil and DataController ~= nil
+end
+
+--==============================================================
+-- MONEY PARSER (fallback)
+--==============================================================
+local MONEY_SUFFIX = {
+	K=1e3, M=1e6, B=1e9, T=1e12,
+	Qa=1e15, Qi=1e18, Sx=1e21, Sp=1e24,
+	Oc=1e27, No=1e30, Dc=1e33, Ud=1e36,
+	Dd=1e39, Td=1e42, Qad=1e45, Qid=1e48,
+}
+
+local function parseMoney(v)
+	if type(v) == "number" then return v end
+	if type(v) ~= "string" then return 0 end
+	v = v:gsub("%s", ""):gsub(",", "")
+	local num, suf = v:match("^([%d%.eE%+%-]+)(%a*)$")
+	if num then
+		local n = tonumber(num) or 0
+		if suf ~= "" and MONEY_SUFFIX[suf] then return n * MONEY_SUFFIX[suf] end
+		return n
+	end
+	return tonumber(v) or 0
+end
+
+local function getMoney()
+	if DataController then
+		local ok, v = pcall(function() return DataController:Get("Money") end)
+		if ok and type(v) == "number" then return v end
+	end
+	local ls = LocalPlayer:FindFirstChild("leaderstats")
+	local m = ls and ls:FindFirstChild("Money")
+	if m and type(m.Value) == "number" then return m.Value end
+	return parseMoney(m and m.Value or "0")
+end
+
+--==============================================================
+-- ANTI-AFK
+--==============================================================
+local function setAntiAfk(on)
+	antiAfk = on == true
+	if antiAfk then
+		if antiAfkConn then return true end
+		antiAfkConn = LocalPlayer.Idled:Connect(function()
+			if not antiAfk then return end
+			pcall(function()
+				VirtualUser:CaptureController()
+				VirtualUser:ClickButton2(Vector2.new())
+			end)
+		end)
+		return true
+	end
+	if antiAfkConn then
+		antiAfkConn:Disconnect()
+		antiAfkConn = nil
+	end
+	return true
+end
+
+--==============================================================
+-- AUTO THROW (cooldown-aware)
+--==============================================================
+local function hookThrowStart()
+	if oldThrowStart or not ThrowController then return false end
+	if type(ThrowController.Start) ~= "function" then return false end
+	oldThrowStart = ThrowController.Start
+	ThrowController.Start = function(...)
+		if autoThrow then
+			return
+		end
+		return oldThrowStart(...)
+	end
+	return true
+end
+
+local function unhookThrowStart()
+	if not oldThrowStart then return end
+	if ThrowController then
+		pcall(function() ThrowController.Start = oldThrowStart end)
+	end
+	oldThrowStart = nil
+end
+
+local function ensurePastLine()
+	local char = LocalPlayer.Character
+	local hrp = char and char:FindFirstChild("HumanoidRootPart")
+	if not hrp then return false end
+
+	if not _crossLineCached then
+		local area = workspace:FindFirstChild("StarterArea")
+		_crossLineCached = area and area:FindFirstChild("CrossLine")
+	end
+	if not _crossLineCached then return true end
+
+	if hrp.Position.Z < _crossLineCached.Position.Z - 2 then
+		_pastLine = true
+		return true
+	end
+
+	hrp.CFrame = CFrame.new(hrp.Position.X, hrp.Position.Y + 2, _crossLineCached.Position.Z - 8)
+	_pastLine = true
+	return true
+end
+
+local function teleportBackFromLine()
+	local area = workspace:FindFirstChild("StarterArea")
+	local crossLine = area and area:FindFirstChild("CrossLine")
+	if not crossLine then return end
+	local char = LocalPlayer.Character
+	local hrp = char and char:FindFirstChild("HumanoidRootPart")
+	if not hrp then return end
+	if hrp.Position.Z < crossLine.Position.Z + 2 then
+		hrp.CFrame = CFrame.new(hrp.Position.X, hrp.Position.Y + 1, crossLine.Position.Z + 4)
+	end
+end
+
+local function resetThrowState()
+	if not Remotes then return end
+	if ClientState and ClientState.Busy then
+		ClientState.Busy = nil
+		pcall(function() Remotes.Invoke("Throw_Cancel") end)
+		task.wait(0.15)
+		pcall(function() Remotes.Invoke("Throw_Cancel") end)
+	end
+end
+
+local function waitForCooldown()
+	local elapsed = os.clock() - _lastThrowAt
+	local remain = _cooldownEstimate - elapsed
+	if remain > 0.05 then
+		task.wait(remain + 0.05)
+	end
+end
+
+local function instantThrowOnce()
+	local char = LocalPlayer.Character
+	local hrp = char and char:FindFirstChild("HumanoidRootPart")
+	if not hrp then return false, false end
+
+	resetThrowState()
+
+	if not _pastLine then
+		ensurePastLine()
+		_pastLine = true
+	end
+	if _crossLineCached and hrp.Position.Z > _crossLineCached.Position.Z then
+		ensurePastLine()
+		_pastLine = true
+	end
+
+	waitForCooldown()
+
+	if ClientState then ClientState.Busy = "Throw" end
+	local wasAnchored = hrp.Anchored
+	hrp.Anchored = true
+
+	local complete, caught = false, nil
+	local cooldownHit = false
+	local sOk, sr, rOk, rr, cOk, cr
+
+	sOk, sr = pcall(function() return Remotes.Invoke("Throw_Start") end)
+	if sOk and type(sr) == "table" and sr.Ok == true then
+		rOk, rr = pcall(function() return Remotes.Invoke("Throw_Resolve", 1) end)
+		if rOk and type(rr) == "table" and rr.Ok == true then
+			task.wait(0.4)
+			cOk, cr = pcall(function() return Remotes.Invoke("Throw_Complete") end)
+			if cOk and ((type(cr) == "table" and cr.Ok == true) or cr == true) then
+				complete = true
+				caught = rr
+				_lastThrowAt = os.clock()
+				_cooldownStrikes = 0
+			else
+				pcall(function() Remotes.Invoke("Throw_Cancel") end)
+			end
+		else
+			pcall(function() Remotes.Invoke("Throw_Cancel") end)
+		end
+	else
+		if sr and sr.Reason == "Cooldown" then
+			cooldownHit = true
+			_cooldownStrikes = _cooldownStrikes + 1
+			if _cooldownStrikes >= 2 then
+				_cooldownEstimate = math.min(_cooldownEstimate + 0.3, 3.0)
+				_cooldownStrikes = 0
+			end
+		end
+	end
+
+	hrp.Anchored = wasAnchored
+	if ClientState then ClientState.Busy = nil end
+
+	if debugThrow then
+		warn(string.format(
+			"[Throw] Start ok=%s r=%s | Resolve ok=%s model=%s r=%s | Complete ok=%s r=%s | CD est=%.1fs",
+			tostring(sOk and sr and sr.Ok), tostring(sr and sr.Reason),
+			tostring(rOk and rr and rr.Ok), tostring(rr and rr.ModelName), tostring(rr and rr.Reason),
+			tostring(cOk and ((type(cr) == "table" and cr.Ok == true) or cr == true)),
+			tostring(cr and cr.Reason),
+			_cooldownEstimate
+		))
+	end
+
+	if complete and notifyWindow and caught and caught.ModelName then
+		local name = tostring(caught.ModelName)
+		local dist = math.floor(tonumber(caught.Distance) or 0)
+		pcall(function()
+			notifyWindow:Notify("Caught", name .. " · " .. dist .. "m", 2)
+		end)
+	end
+
+	return complete, cooldownHit
+end
+
+local function startThrowLoop()
+	if throwLoopRunning then return end
+	throwLoopRunning = true
+	task.spawn(function()
+		while autoThrow do
+			local _, cooldownHit = pcall(instantThrowOnce)
+			if cooldownHit then
+				task.wait(0.1)
+			else
+				local waited = 0
+				while autoThrow and waited < 0.1 do
+					task.wait(0.02)
+					waited += 0.02
+				end
+			end
+		end
+		throwLoopRunning = false
+	end)
+end
+
+local function trySetThrowPower()
+	if _powerSet or not Remotes then return end
+	_powerSet = true
+	pcall(function() Remotes.Invoke("Player_SetThrowPower", 999999999) end)
+end
+
+local function setAutoThrow(on)
+	if on then
+		if not resolveThrowMods() then return false end
+		if not hookThrowStart() then return false end
+		if autoTrain then
+			autoTrain = false
+			trainLoopRunning = false
+			trainClickRunning = false
+			if notifyWindow then
+				pcall(function()
+					notifyWindow:Notify("Auto Train", "Disabled — conflicts with Throw", 3)
+				end)
+			end
+		end
+		autoThrow = true
+		_pastLine = false
+		_crossLineCached = nil
+		_powerSet = false
+		_lastThrowAt = 0
+		_cooldownEstimate = 1.5
+		_cooldownStrikes = 0
+		trySetThrowPower()
+		startThrowLoop()
+		return true
+	end
+	autoThrow = false
+	throwLoopRunning = false
+	_powerSet = false
+	unhookThrowStart()
+	_pastLine = false
+	_crossLineCached = nil
+	pcall(teleportBackFromLine)
+	return true
+end
+
+--==============================================================
+-- AUTO EQUIP BEST (Plot)
+--==============================================================
+local function doEquipBest()
+	if not resolveRemotes() then return false end
+	local ok, result = pcall(function() return Remotes.Invoke("Plot_EquipBest") end)
+	if not ok or type(result) ~= "table" then return false, result end
+	return result.Ok == true, result
+end
+
+local function startEquipLoop()
+	if equipLoopRunning then return end
+	equipLoopRunning = true
+	task.spawn(function()
+		while autoEquipBest do
+			doEquipBest()
+			local waited, d = 0, math.max(0.5, equipBestDelay)
+			while autoEquipBest and waited < d do
+				task.wait(0.25)
+				waited += 0.25
+			end
+		end
+		equipLoopRunning = false
+	end)
+end
+
+local function setAutoEquipBest(on)
+	autoEquipBest = on == true
+	if autoEquipBest then
+		if not resolveRemotes() then autoEquipBest = false return false end
+		startEquipLoop()
+		return true
+	end
+	equipLoopRunning = false
+	return true
+end
+
+--==============================================================
+-- AUTO UPGRADE (Stand + Fence)
+--==============================================================
+local function nextStandPrice()
+	if not (DataController and StandsConfig) then return nil end
+	local cur = 0
+	local ok, v = pcall(function() return DataController:Get("Stand") end)
+	if ok then cur = v or 0 end
+	local info = StandsConfig.Get(cur + 1)
+	if type(info) ~= "table" then return nil end
+	return tonumber(info.Price)
+end
+
+local function nextFencePrice()
+	if not (DataController and FenceConfig) then return nil end
+	local cur = 0
+	local ok, v = pcall(function() return DataController:Get("FenceLevel") end)
+	if ok then cur = v or 0 end
+	local info = FenceConfig.Get(cur + 1)
+	if type(info) ~= "table" then return nil end
+	return tonumber(info.Price)
+end
+
+local function canAfford(price)
+	if type(price) ~= "number" then return false end
+	return getMoney() >= price
+end
+
+local function tryUpgradeStand()
+	if not resolveUpgradeMods() then return false end
+	if ClientState and ClientState.Busy then return false end
+	local price = nextStandPrice()
+	if not price or not canAfford(price) then return false end
+	local ok, res = pcall(function() return Remotes.Invoke("Stand_Upgrade") end)
+	if not ok then return false end
+	return (type(res) == "table" and res.Ok == true) or res == true
+end
+
+local function tryUpgradeFence()
+	if not resolveUpgradeMods() then return false end
+	if ClientState and ClientState.Busy then return false end
+	local price = nextFencePrice()
+	if not price or not canAfford(price) then return false end
+	local ok, res = pcall(function() return Remotes.Invoke("Plot_UpgradeFence") end)
+	if not ok then return false end
+	return (type(res) == "table" and res.Ok == true) or res == true
+end
+
+local function startStandUpgradeLoop()
+	if standUpLoopRunning then return end
+	standUpLoopRunning = true
+	task.spawn(function()
+		while autoUpStand do
+			pcall(tryUpgradeStand)
+			task.wait(upgradeDelay)
+		end
+		standUpLoopRunning = false
+	end)
+end
+
+local function startFenceUpgradeLoop()
+	if fenceUpLoopRunning then return end
+	fenceUpLoopRunning = true
+	task.spawn(function()
+		while autoUpFence do
+			pcall(tryUpgradeFence)
+			task.wait(upgradeDelay)
+		end
+		fenceUpLoopRunning = false
+	end)
+end
+
+local function setAutoUpgradeStand(on)
+	autoUpStand = on == true
+	if autoUpStand then
+		if not resolveUpgradeMods() then autoUpStand = false return false end
+		startStandUpgradeLoop()
+		return true
+	end
+	standUpLoopRunning = false
+	return true
+end
+
+local function setAutoUpgradeFence(on)
+	autoUpFence = on == true
+	if autoUpFence then
+		if not resolveUpgradeMods() then autoUpFence = false return false end
+		startFenceUpgradeLoop()
+		return true
+	end
+	fenceUpLoopRunning = false
+	return true
+end
+
+--==============================================================
+-- AUTO BUY FOOD
+--==============================================================
+local function isFoodOwned(idx)
+	local ok, v = pcall(function()
+		return DataController:GetPath("OwnedFoods." .. idx)
+	end)
+	return ok and v == true
+end
+
+local function isFoodLocked(idx)
+	local ok, v = pcall(function()
+		return FoodsConfig.IsLocked(idx)
+	end)
+	return ok and v == true
+end
+
+local function tryBuyFood(idx)
+	if not resolveRemotes() then return false end
+	local ok, res = pcall(function() return Remotes.Invoke("Shop_Buy", idx) end)
+	if not ok then return false end
+	return (type(res) == "table" and res.Ok == true) or res == true
+end
+
+local function tryEquipFood(idx)
+	if not resolveRemotes() then return false end
+	local ok, res = pcall(function() return Remotes.Invoke("Shop_Equip", idx) end)
+	if not ok then return false end
+	return (type(res) == "table" and res.Ok == true) or res == true
+end
+
+local function buildBuyList(money)
+	local list = {}
+	if not FoodsConfig then return list end
+	for i = 1, FoodsConfig.CountAll() do
+		if not isFoodOwned(i) and not isFoodLocked(i) then
+			local f = FoodsConfig.GetAny(i)
+			if f and type(f.Price) == "number" and money >= f.Price then
+				list[#list + 1] = {
+					idx   = i,
+					price = f.Price,
+					tier  = f.Tier or 99,
+					name  = f.Name or tostring(i),
+				}
+			end
+		end
+	end
+	table.sort(list, function(a, b)
+		if a.tier ~= b.tier then return a.tier < b.tier end
+		return a.price < b.price
+	end)
+	return list
+end
+
+local function buyPass()
+	if not resolveBuyMods() then return 0 end
+	local money = getMoney()
+	local list = buildBuyList(money)
+	local bought = 0
+	for _, c in ipairs(list) do
+		if not autoBuy then break end
+		money = getMoney()
+		if money < c.price then break end
+		if isFoodOwned(c.idx) then continue end
+		if tryBuyFood(c.idx) then
+			bought += 1
+			tryEquipFood(c.idx)
+		end
+		task.wait(buyDelay)
+	end
+	return bought
+end
+
+local function startBuyLoop()
+	if buyLoopRunning then return end
+	buyLoopRunning = true
+	task.spawn(function()
+		while autoBuy do
+			pcall(buyPass)
+			local w = 0
+			while autoBuy and w < buyLoopWait do
+				task.wait(0.25)
+				w += 0.25
+			end
+		end
+		buyLoopRunning = false
+	end)
+end
+
+local function setAutoBuy(on)
+	if on then
+		if not resolveBuyMods() then return false end
+		autoBuy = true
+		startBuyLoop()
+		return true
+	end
+	autoBuy = false
+	buyLoopRunning = false
+	return true
+end
+
+--==============================================================
+-- AUTO SELL (rarity + mutation)
+--==============================================================
+local function rarityFromModelName(modelName)
+	if type(modelName) ~= "string" or modelName == "" then return nil end
+	if not AnimalEconomy or type(AnimalEconomy.Get) ~= "function" then return nil end
+	local info = AnimalEconomy.Get(modelName)
+	if type(info) == "table" and type(info.Rarity) == "string" then
+		return info.Rarity
+	end
+	local list = AnimalEconomy.List
+	if type(list) == "table" then
+		local row = list[modelName]
+		if type(row) == "table" and type(row.Rarity) == "string" then
+			return row.Rarity
+		end
+	end
+	return nil
+end
+
+local function getEntryModelName(entry)
+	if type(entry) ~= "table" then return nil end
+	if type(entry.ModelName) == "string" and entry.ModelName ~= "" then
+		return entry.ModelName
+	end
+	if type(entry.Name) == "string" then return entry.Name end
+	if type(entry.name) == "string" then return entry.name end
+	return nil
+end
+
+local function hasMutationFilter()
+	return next(sellMutations) ~= nil
+end
+
+local function mutationAllowed(entry)
+	if not hasMutationFilter() then return true end
+	local mut = entry and entry.Mutation
+	if type(mut) == "string" and mut ~= "" then
+		return sellMutations[mut] == true
+	end
+	return sellMutations["None"] == true
+end
+
+local function doAutoSellPass()
+	if not resolveSellMods() then return 0 end
+	local animals
+	pcall(function() animals = DataController:Get("Animals") end)
+	if type(animals) ~= "table" then return 0 end
+	local sold = 0
+	for id, entry in pairs(animals) do
+		if not autoSell then break end
+		if type(entry) ~= "table" then continue end
+		if entry.Placed == true then continue end
+		if entry.Bought == true then continue end
+		local modelName = getEntryModelName(entry)
+		local rar = rarityFromModelName(modelName)
+		if not rar or not sellRarities[rar] then continue end
+		if not mutationAllowed(entry) then continue end
+		local ok, res = pcall(function()
+			return Remotes.Invoke("Plot_SellAnimal", id)
+		end)
+		if ok and type(res) == "table" and res.Ok then
+			sold += 1
+			task.wait(0.15)
+		end
+	end
+	return sold
+end
+
+local function startSellLoop()
+	if sellLoopRunning then return end
+	sellLoopRunning = true
+	task.spawn(function()
+		while autoSell do
+			doAutoSellPass()
+			local waited, d = 0, math.max(0.5, sellDelay)
+			while autoSell and waited < d do
+				task.wait(0.25)
+				waited += 0.25
+			end
+		end
+		sellLoopRunning = false
+	end)
+end
+
+local function setAutoSell(on)
+	autoSell = on == true
+	if autoSell then
+		if not resolveSellMods() then autoSell = false return false end
+		startSellLoop()
+		return true
+	end
+	sellLoopRunning = false
+	return true
+end
+
+--==============================================================
+-- AUTO TRAIN
+--==============================================================
+local function getTrainingSpot()
+	local props = workspace:FindFirstChild("LocalPlotProps")
+	if not props then return nil end
+	local area = props:FindFirstChild("TrainingArea")
+	if not area then return nil end
+	local spot = area:FindFirstChild("TrainingSpot")
+	if spot and spot:IsA("BasePart") then return spot end
+	return nil
+end
+
+local function teleportToTraining()
+	local spot = getTrainingSpot()
+	if not spot then return false end
+	local char = LocalPlayer.Character
+	local hrp = char and char:FindFirstChild("HumanoidRootPart")
+	if not hrp then return false end
+	hrp.CFrame = spot.CFrame + Vector3.new(0, 3, 0)
+	return true
+end
+
+local function isOnTrainingCircle()
+	local spot = getTrainingSpot()
+	if not spot then return false end
+	local char = LocalPlayer.Character
+	local hrp = char and char:FindFirstChild("HumanoidRootPart")
+	if not hrp then return false end
+	local diff = hrp.Position - spot.Position
+	return Vector3.new(diff.X, 0, diff.Z).Magnitude < math.max(spot.Size.Y, spot.Size.Z) / 2 + 2
+end
+
+local function clickTapBonus()
+	local pg = LocalPlayer:FindFirstChild("PlayerGui")
+	if not pg then return end
+	local seq = pg:FindFirstChild("TrainingSequence")
+	if not seq then return end
+	local layer = seq:FindFirstChild("TapBonusLayer")
+	if not layer then return end
+	local btn = layer:FindFirstChild("TapBonus")
+	if not btn or not btn:IsA("ImageButton") then return end
+	if not btn.Active then return end
+
+	if type(getconnections) == "function" then
+		local ok, conns = pcall(getconnections, btn.Activated)
+		if ok and conns then
+			for _, c in ipairs(conns) do
+				pcall(function()
+					if type(c.Fire) == "function" then
+						c:Fire()
+					elseif type(c.Function) == "function" then
+						c.Function()
+					end
+				end)
+			end
+			return
+		end
+	end
+	pcall(function() btn:Activate() end)
+end
+
+local function canStartTraining()
+	if not (Remotes and TrainingController) then return false end
+	if ClientState and (ClientState.Busy or ClientState.OfflineOpen) then return false end
+	if ClientState and ClientState.TutorialActive then return false end
+
+	local running = false
+	pcall(function() running = TrainingController.IsRunning() end)
+	return not running
+end
+
+local function startTrainClickLoop()
+	if trainClickRunning then return end
+	trainClickRunning = true
+	task.spawn(function()
+		while autoTrain do
+			pcall(clickTapBonus)
+			task.wait(0.1)
+		end
+		trainClickRunning = false
+	end)
+end
+
+local function startTrainLoop()
+	if trainLoopRunning then return end
+	trainLoopRunning = true
+	task.spawn(function()
+		while autoTrain do
+			if canStartTraining() then
+				if not isOnTrainingCircle() then
+					pcall(teleportToTraining)
+					task.wait(0.35)
+				end
+				if autoTrain and canStartTraining() and isOnTrainingCircle() then
+					task.spawn(function()
+						pcall(function() TrainingController.Start() end)
+					end)
+				end
+			end
+			task.wait(0.5)
+		end
+		trainLoopRunning = false
+	end)
+end
+
+local function setAutoTrain(on)
+	if on then
+		if not resolveTrainMods() then return false end
+		if autoThrow then
+			autoThrow = false
+			throwLoopRunning = false
+			_powerSet = false
+			unhookThrowStart()
+			_pastLine = false
+			_crossLineCached = nil
+			pcall(teleportBackFromLine)
+			if notifyWindow then
+				pcall(function()
+					notifyWindow:Notify("Auto Throw", "Disabled — conflicts with Train", 3)
+				end)
+			end
+		end
+		autoTrain = true
+		startTrainLoop()
+		startTrainClickLoop()
+		return true
+	end
+	autoTrain = false
+	trainLoopRunning = false
+	trainClickRunning = false
+	return true
+end
+
+--==============================================================
+-- UI
+--==============================================================
+Library:CreateLoader({
+	Title = "QuackHub",
+	Subtitle = "Throw Food For Animals",
+	Theme = "Charcoal",
+	ShowBar = true,
+	FadeTime = 0.3,
+	FloatImage = "rbxassetid://71109437053861",
+	Texts = {
+		{ Text = "Loading...", Duration = 0.6 },
+		{ Text = "Ready", Duration = 0.4 },
+	},
+	FinishText = "Done",
+	OnFinish = function()
+		resolveRemotes()
+
+		local Window = Library:CreateWindow({
+			Title = "QuackHub",
+			Theme = "Charcoal",
+			ToggleKey = Enum.KeyCode.K,
+			Stealth = true,
+			ShowWatermark = false,
+			ShowDropButton = true,
+			HeaderImage = "rbxassetid://71109437053861",
+			FloatImage = "rbxassetid://71109437053861",
+			UseCustomFont = false,
+		})
+		notifyWindow = Window
+
+		-- ══════════════════════════════════════════
+		-- MAIN
+		-- ══════════════════════════════════════════
+		local MainTab = Window:CreateTab("Main", "rbxassetid://102384750306029")
+		MainTab:CreateSection("Main Features")
+		MainTab:CreateToggle({
+			Title = "Auto Throw",
+			Default = false,
+			Flag = "AutoThrow",
+			Callback = function(v)
+				local ok = setAutoThrow(v)
+				if v and not ok then
+					Window:Notify("Throw", "Controllers not found", 3)
+				end
+			end,
+		})
+		MainTab:CreateToggle({
+			Title = "Auto Train",
+			Default = false,
+			Flag = "AutoTrain",
+			Callback = function(v)
+				local ok = setAutoTrain(v)
+				if v and not ok then
+					Window:Notify("Train", "Controllers not found", 3)
+				end
+			end,
+		})
+		MainTab:CreateToggle({
+			Title = "Auto Equip Best",
+			Default = false,
+			Flag = "AutoEquipBest",
+			Callback = function(v)
+				local ok = setAutoEquipBest(v)
+				if v and not ok then
+					Window:Notify("Equip Best", "Remotes not found", 3)
+				end
+			end,
+		})
+				MainTab:CreateToggle({
+			Title = "Auto Upgrade Stand",
+			Default = false,
+			Flag = "AutoUpStand",
+			Callback = function(v)
+				local ok = setAutoUpgradeStand(v)
+				if v and not ok then
+					Window:Notify("Stand", "Remotes not found", 3)
+				end
+			end,
+		})
+		MainTab:CreateToggle({
+			Title = "Auto Upgrade Fence",
+			Default = false,
+			Flag = "AutoUpFence",
+			Callback = function(v)
+				local ok = setAutoUpgradeFence(v)
+				if v and not ok then
+					Window:Notify("Fence", "Remotes not found", 3)
+				end
+			end,
+		})
+
+		-- ══════════════════════════════════════════
+		-- SHOP
+		-- ══════════════════════════════════════════
+		local ShopTab = Window:CreateTab("Shop", "rbxassetid://8575479406")
+		ShopTab:CreateSection("Shop")
+		ShopTab:CreateToggle({
+			Title = "Auto Buy Food",
+			Default = false,
+			Flag = "AutoBuyFood",
+			Callback = function(v)
+				local ok = setAutoBuy(v)
+				if v and not ok then
+					Window:Notify("Auto Buy", "Modules missing", 3)
+				end
+			end,
+		})
+		ShopTab:CreateToggle({
+			Title = "Auto Sell Pets",
+			Default = false,
+			Flag = "AutoSell",
+			Callback = function(v)
+				local ok = setAutoSell(v)
+				if v and not ok then
+					Window:Notify("Auto Sell", "Data/Remotes missing", 3)
+				end
+			end,
+		})
+		ShopTab:CreateSection("Filters")
+		if type(ShopTab.CreateMultiDropdown) == "function" then
+			ShopTab:CreateMultiDropdown({
+				Title = "Sell Rarities",
+				Options = RARITY_ORDER,
+				Default = sellRarities,
+				Flag = "SellRaritiesMulti",
+				Callback = function(sel)
+					if type(sel) ~= "table" then return end
+					for _, r in ipairs(RARITY_ORDER) do
+						sellRarities[r] = sel[r] == true
+					end
+				end,
+			})
+			ShopTab:CreateMultiDropdown({
+				Title = "Sell Mutations",
+				Options = MUTATION_ORDER,
+				Default = sellMutations,
+				Flag = "SellMutationsMulti",
+				Callback = function(sel)
+					if type(sel) ~= "table" then return end
+					sellMutations = {}
+					for _, m in ipairs(MUTATION_ORDER) do
+						if sel[m] == true then
+							sellMutations[m] = true
+						end
+					end
+				end,
+			})
+		else
+			ShopTab:CreateDropdown({
+				Title = "Sell Rarities",
+				Options = RARITY_ORDER,
+				Default = "Common",
+				Flag = "SellRarityDrop",
+				Callback = function(v)
+					if type(v) == "string" then
+						sellRarities[v] = not sellRarities[v]
+					end
+				end,
+			})
+			ShopTab:CreateDropdown({
+				Title = "Sell Mutations",
+				Options = MUTATION_ORDER,
+				Default = "None",
+				Flag = "SellMutationDrop",
+				Callback = function(v)
+					if type(v) == "string" then
+						sellMutations[v] = not sellMutations[v]
+					end
+				end,
+			})
+		end
+
+		-- ══════════════════════════════════════════
+		-- MISC
+		-- ══════════════════════════════════════════
+		local MiscTab = Window:CreateTab("Misc", "rbxassetid://16717281575")
+		MiscTab:CreateSection("Utility")
+		MiscTab:CreateToggle({
+			Title = "Anti AFK",
+			Default = false,
+			Flag = "AntiAfk",
+			Callback = function(v)
+				setAntiAfk(v)
+			end,
+		})
+		MiscTab:CreateSection("Config")
+		MiscTab:CreateConfigList({
+			Title = "Config",
+			Default = "default",
+		})
+
+		Window:Notify("QuackHub", "Successfully loaded", 2)
+	end,
+})
