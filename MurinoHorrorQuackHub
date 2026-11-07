@@ -1,816 +1,865 @@
---==============================================================
--- QuackHub · full · stealth QuackUI
---==============================================================
 local Library = loadstring(game:HttpGet(
 	"https://raw.githubusercontent.com/Dyinka/QuackUI/refs/heads/main/QuackUI.lua?t=" .. tostring(tick())
 ))()
-local Players           = game:GetService("Players")
-local RunService        = game:GetService("RunService")
-local Lighting          = game:GetService("Lighting")
-local TweenService      = game:GetService("TweenService")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local ContextActionService = game:GetService("ContextActionService")
-local CollectionService = game:GetService("CollectionService")
-local LocalPlayer       = Players.LocalPlayer
-local Events      = ReplicatedStorage:WaitForChild("Events")
-local ChigurEvent = Events:WaitForChild("Chigur")
-local MeatsWatchEvent = ReplicatedStorage:WaitForChild("MeatsWatch")
 
-local zaecOn, chigurOn = false, false
-local oldNamecall
-local wsEnabled, wsValue, wsConn = false, 16, nil
-local fbOn, fbConn = false, nil
-local oldLighting = {}
+local plr  = game:GetService("Players")
+local rs   = game:GetService("RunService")
+local lt   = game:GetService("Lighting")
+local tw   = game:GetService("TweenService")
+local rps  = game:GetService("ReplicatedStorage")
+local cas  = game:GetService("ContextActionService")
+local cns  = game:GetService("CollectionService")
+local lp   = plr.LocalPlayer
+
+local ev    = rps:WaitForChild("Events")
+local chgEv = ev:WaitForChild("Chigur")
+local mtEv  = rps:WaitForChild("MeatsWatch")
+
+local zaec, chigOn = false, false
+local oldNc
+local wsOn, wsVal, wsCn = false, 16, nil
+local fbOn, fbCn = false, nil
+local oldLt = {}
 local skipOn = false
-local skipCooldown = 0.2
-local skipDelay = 0.65
-local lastSkip = 0
-local skipConn
-local hookedTriggers = {}
-local pendingSkip = {}
-local arturOn = false
-local arturFolderConn
-local arturChildConn
-local arturSpawnConn
-local arturPrompted = setmetatable({}, { __mode = "k" })
-local skvorecOn = false
-local skvorecFolderConn
-local skvorecChildConn
-local skvorecPrompted = setmetatable({}, { __mode = "k" })
-local golodOn = false
-local golodConn
-local golodChildConn
-local golodRoundId = 0
-local room0000On = false
-local room0000Conn
-local room0000Highlights = {}
-local espItemsOn = false
-local espItemsConn
-local espItemsWorkspaceConn
-local espItemsLoopRunning = false
-local espItemHighlights = {}
-local instantUseOn = false
-local instantConns = {}
-local oldTweenCreate
-local freezeMeatOn = false
-local freezeMeatConn
-local oldMeatsNamecall
-local meatsRaycastHooked = false
-local meatsRaycastOrig
-local noStunOn = false
-local oldBindAction
-local shakeOn = false
-local oldBindRenderStep
-local godModeShkafOn = false
-local godModeShkafConn
-local oldNamecallGodMode
-local autoPickupOn = false
-local autoPickupScanConn
-local autoPickupHeartbeatConn
-local autoPickupCache = {}
-local autoPickupCooldown = setmetatable({}, { __mode = "k" })
-local COIN_NAMES = {
-	["coin"] = true, ["coins"] = true, ["монета"] = true, ["монеты"] = true,
+local skipCd, skipDl, lastSk = 0.2, 0.65, 0
+local skipCn
+local hkTrg, pnSk = {}, {}
+local artOn = false
+local artFc, artCc, artSc
+local artPr = setmetatable({}, { __mode = "k" })
+local skvOn = false
+local skvFc, skvCc
+local skvPr = setmetatable({}, { __mode = "k" })
+local golOn = false
+local golCn, golCc, golId = nil, nil, 0
+local rmOn, rmCn = false, nil
+local rmTag = {}
+local espOn, espCn, espWc, espRun = false, nil, nil, false
+local espTag = {}
+local instOn, instCns = false, {}
+local oldTc
+local fzOn, fzCn = false, nil
+local oldMn, mrHk, mrOr = nil, false, nil
+local stunOn, oldBa = false, nil
+local shakeOn, oldBrs = false, nil
+local gmOn, gmCn, oldGm = false, nil, nil
+local pkOn, pkSc, pkHc = false, nil, nil
+local pkCh = {}
+local pkCd = setmetatable({}, { __mode = "k" })
+
+local coinN = {
+	coin = true, coins = true, ["монета"] = true, ["монеты"] = true,
 }
-local SKIP_NAMES = {
+local skipN = {
 	bananas = true, trainfloor = true, doors = true, fleshwall = true, holls = true,
 }
-local FOOD = { vinograd = true, slivi = true, banani = true, yabloki = true }
+local food = { vinograd = true, slivi = true, banani = true, yabloki = true }
 
-local function setWalkSpeed(on, speed)
-	if speed then wsValue = speed end
-	wsEnabled = on
-	if wsConn then wsConn:Disconnect() wsConn = nil end
+local ESP = {
+	ItemLine = Color3.fromRGB(212, 175, 110),
+	CoinLine = Color3.fromRGB(255, 196, 72),
+	RoomLine = Color3.fromRGB(168, 120, 255),
+}
+
+local function makeOutline(adornee, lineCol)
+	local target = adornee
+	if adornee:IsA("Model") then
+		target = adornee
+	elseif not adornee:IsA("BasePart") and not adornee:IsA("Model") then
+		return nil
+	end
+	local hl = Instance.new("Highlight")
+	hl.Name = "QH_ESP"
+	hl.Adornee = target
+	hl.FillTransparency = 1
+	hl.OutlineTransparency = 0
+	hl.OutlineColor = lineCol
+	hl.FillColor = lineCol
+	hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+	hl.Parent = target
+	return hl
+end
+
+local function destroyTag(entry)
+	if not entry then return end
+	pcall(function()
+		if entry.hl then entry.hl:Destroy() end
+	end)
+end
+
+local function setWS(on, sp)
+	if sp then wsVal = sp end
+	wsOn = on
+	if wsCn then wsCn:Disconnect() wsCn = nil end
 	if not on then
-		local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
-		if hum then hum.WalkSpeed = 16 end
+		local h = lp.Character and lp.Character:FindFirstChildOfClass("Humanoid")
+		if h then h.WalkSpeed = 16 end
 		return
 	end
-	wsConn = RunService.Heartbeat:Connect(function()
-		if not wsEnabled then return end
-		local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
-		if hum and hum.WalkSpeed ~= wsValue then hum.WalkSpeed = wsValue end
+	wsCn = rs.Heartbeat:Connect(function()
+		if not wsOn then return end
+		local h = lp.Character and lp.Character:FindFirstChildOfClass("Humanoid")
+		if h and h.WalkSpeed ~= wsVal then h.WalkSpeed = wsVal end
 	end)
-	local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
-	if hum then hum.WalkSpeed = wsValue end
+	local h = lp.Character and lp.Character:FindFirstChildOfClass("Humanoid")
+	if h then h.WalkSpeed = wsVal end
 end
-LocalPlayer.CharacterAdded:Connect(function(char)
+
+lp.CharacterAdded:Connect(function(c)
 	task.wait(0.3)
-	if wsEnabled then
-		local hum = char:FindFirstChildOfClass("Humanoid")
-		if hum then hum.WalkSpeed = wsValue end
+	if wsOn then
+		local h = c:FindFirstChildOfClass("Humanoid")
+		if h then h.WalkSpeed = wsVal end
 	end
 end)
 
-local function setFullbright(on)
+local function setFB(on)
 	fbOn = on
-	if fbConn then fbConn:Disconnect() fbConn = nil end
+	if fbCn then fbCn:Disconnect() fbCn = nil end
 	if not on then
-		if oldLighting.Brightness then
-			Lighting.Brightness = oldLighting.Brightness
-			Lighting.ClockTime = oldLighting.ClockTime
-			Lighting.FogEnd = oldLighting.FogEnd
-			Lighting.GlobalShadows = oldLighting.GlobalShadows
-			Lighting.OutdoorAmbient = oldLighting.OutdoorAmbient
+		if oldLt.Brightness then
+			lt.Brightness = oldLt.Brightness
+			lt.ClockTime = oldLt.ClockTime
+			lt.FogEnd = oldLt.FogEnd
+			lt.GlobalShadows = oldLt.GlobalShadows
+			lt.OutdoorAmbient = oldLt.OutdoorAmbient
 		end
 		return
 	end
-	oldLighting = {
-		Brightness = Lighting.Brightness, ClockTime = Lighting.ClockTime,
-		FogEnd = Lighting.FogEnd, GlobalShadows = Lighting.GlobalShadows,
-		OutdoorAmbient = Lighting.OutdoorAmbient,
+	oldLt = {
+		Brightness = lt.Brightness, ClockTime = lt.ClockTime,
+		FogEnd = lt.FogEnd, GlobalShadows = lt.GlobalShadows,
+		OutdoorAmbient = lt.OutdoorAmbient,
 	}
-	fbConn = RunService.RenderStepped:Connect(function()
+	fbCn = rs.RenderStepped:Connect(function()
 		if not fbOn then return end
-		Lighting.Brightness = 2
-		Lighting.ClockTime = 14
-		Lighting.FogEnd = 1e6
-		Lighting.GlobalShadows = false
-		Lighting.OutdoorAmbient = Color3.fromRGB(255, 255, 255)
+		lt.Brightness = 2
+		lt.ClockTime = 14
+		lt.FogEnd = 1e6
+		lt.GlobalShadows = false
+		lt.OutdoorAmbient = Color3.fromRGB(255, 255, 255)
 	end)
 end
 
-local function patchHealingGui(gui)
-	if not gui or not instantUseOn then return end
-	local amount = gui:FindFirstChild("Amount")
-	if amount and (amount:IsA("NumberValue") or amount:IsA("IntValue")) then amount.Value = 0 end
-	local frame = gui:FindFirstChild("Frame")
-	local bar = frame and frame:FindFirstChild("Frame")
+local function patchHG(gui)
+	if not gui or not instOn then return end
+	local am = gui:FindFirstChild("Amount")
+	if am and (am:IsA("NumberValue") or am:IsA("IntValue")) then am.Value = 0 end
+	local fr = gui:FindFirstChild("Frame")
+	local bar = fr and fr:FindFirstChild("Frame")
 	if bar and bar:IsA("GuiObject") then bar.Size = UDim2.new(1, 0, 1, 0) end
 end
-local function watchTool(tool)
+
+local function watchT(tool)
 	if not tool or not tool:IsA("Tool") then return end
-	local name = tool.Name:lower()
-	if not (name:find("bandag") or name:find("бинт") or tool:FindFirstChild("BandageScript")) then return end
-	local function scan(parent)
-		for _, d in ipairs(parent:GetDescendants()) do
+	local n = tool.Name:lower()
+	if not (n:find("bandag") or n:find("бинт") or tool:FindFirstChild("BandageScript")) then return end
+	local function scan(p)
+		for _, d in ipairs(p:GetDescendants()) do
 			if d.Name == "HealingGui" or d.Name == "Amount" then
 				if d.Name == "HealingGui" then
-					patchHealingGui(d)
+					patchHG(d)
 					d:GetPropertyChangedSignal("Enabled"):Connect(function()
-						if d.Enabled then patchHealingGui(d) end
+						if d.Enabled then patchHG(d) end
 					end)
 				elseif d:IsA("NumberValue") or d:IsA("IntValue") then
-					if instantUseOn then d.Value = 0 end
+					if instOn then d.Value = 0 end
 					d:GetPropertyChangedSignal("Value"):Connect(function()
-						if instantUseOn and d.Value > 0 then d.Value = 0 end
+						if instOn and d.Value > 0 then d.Value = 0 end
 					end)
 				end
 			end
 		end
 	end
 	scan(tool)
-	table.insert(instantConns, tool.DescendantAdded:Connect(function(inst)
-		if not instantUseOn then return end
-		if inst.Name == "HealingGui" then patchHealingGui(inst)
-		elseif inst.Name == "Amount" and (inst:IsA("NumberValue") or inst:IsA("IntValue")) then inst.Value = 0 end
+	table.insert(instCns, tool.DescendantAdded:Connect(function(i)
+		if not instOn then return end
+		if i.Name == "HealingGui" then patchHG(i)
+		elseif i.Name == "Amount" and (i:IsA("NumberValue") or i:IsA("IntValue")) then i.Value = 0 end
 	end))
 end
-local function setInstantUse(on)
-	instantUseOn = on
-	for _, c in ipairs(instantConns) do pcall(function() c:Disconnect() end) end
-	table.clear(instantConns)
-	if not oldTweenCreate and hookfunction then
-		pcall(function()
-			oldTweenCreate = hookfunction(TweenService.Create, function(self, instance, info, props)
-				if instantUseOn and info and typeof(info) == "TweenInfo" and info.Time and info.Time > 0.05 then
-					local ok, inHeal = pcall(function()
-						return instance and instance:IsA("GuiObject") and instance:FindFirstAncestor("HealingGui") ~= nil
-					end)
-					if ok and inHeal then
-						info = TweenInfo.new(0, info.EasingStyle, info.EasingDirection)
-					end
+
+local function setInst(on)
+	instOn = on
+	for _, c in ipairs(instCns) do pcall(function() c:Disconnect() end) end
+	table.clear(instCns)
+	if not oldTc and hookfunction then
+		oldTc = hookfunction(tw.Create, function(self, inst, info, props)
+			if instOn and info and typeof(info) == "TweenInfo" and info.Time and info.Time > 0.05 then
+				local ok, inHeal = pcall(function()
+					return inst and inst:IsA("GuiObject") and inst:FindFirstAncestor("HealingGui") ~= nil
+				end)
+				if ok and inHeal then
+					info = TweenInfo.new(0, info.EasingStyle, info.EasingDirection)
 				end
-				return oldTweenCreate(self, instance, info, props)
-			end)
+			end
+			return oldTc(self, inst, info, props)
 		end)
 	end
 	if not on then return end
-	local function scanContainer(container)
-		if not container then return end
-		for _, t in ipairs(container:GetChildren()) do watchTool(t) end
-		table.insert(instantConns, container.ChildAdded:Connect(function(ch)
-			if instantUseOn then watchTool(ch) end
+	local function scanCont(c)
+		if not c then return end
+		for _, t in ipairs(c:GetChildren()) do watchT(t) end
+		table.insert(instCns, c.ChildAdded:Connect(function(ch)
+			if instOn then watchT(ch) end
 		end))
 	end
-	scanContainer(LocalPlayer:FindFirstChild("Backpack"))
-	scanContainer(LocalPlayer.Character)
-	table.insert(instantConns, LocalPlayer.CharacterAdded:Connect(function(char)
+	scanCont(lp:FindFirstChild("Backpack"))
+	scanCont(lp.Character)
+	table.insert(instCns, lp.CharacterAdded:Connect(function(c)
 		task.wait(0.2)
-		if instantUseOn then scanContainer(char) end
+		if instOn then scanCont(c) end
 	end))
 end
 
-local function ensureNamecallHook()
-	if oldNamecall then return end
-	oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
-		local method = getnamecallmethod()
-		local args = { ... }
-		if zaecOn then
-			if method == "FireServer" and typeof(self) == "Instance" and self.Name == "Death" and args[1] == "Zaec" then return nil end
-			if method == "InvokeServer" and typeof(self) == "Instance" and self.Name == "Dodging" then return true end
+local function ncHook()
+	if oldNc then return end
+	oldNc = hookmetamethod(game, "__namecall", function(self, ...)
+		local m = getnamecallmethod()
+		local a = { ... }
+		if zaec then
+			if m == "FireServer" and typeof(self) == "Instance" and self.Name == "Death" and a[1] == "Zaec" then return nil end
+			if m == "InvokeServer" and typeof(self) == "Instance" and self.Name == "Dodging" then return true end
 		end
-		return oldNamecall(self, ...)
+		return oldNc(self, ...)
 	end)
-end
-local function muteZaecClient()
-	pcall(function()
-		local zaec = Events:FindFirstChild("Zaec")
-		if zaec and getconnections then
-			for _, c in ipairs(getconnections(zaec.OnClientEvent)) do pcall(function() c:Disable() end) end
-		end
-	end)
-	pcall(function()
-		local pg = LocalPlayer:FindFirstChild("PlayerGui")
-		local dm = pg and pg:FindFirstChild("DontMove")
-		local img = dm and dm:FindFirstChild("ImageLabel")
-		if img then img.Visible = false end
-	end)
-end
-local function setDestroyZaec(on)
-	zaecOn = on
-	if on then ensureNamecallHook() muteZaecClient() end
 end
 
-local chigurConn, chigurBusy = nil, false
-local function pressChigurButton(correct)
-	local gui = LocalPlayer.PlayerGui:FindFirstChild("AntonChigur")
+local function muteZaec()
+	pcall(function()
+		local z = ev:FindFirstChild("Zaec")
+		if z and getconnections then
+			for _, c in ipairs(getconnections(z.OnClientEvent)) do pcall(function() c:Disable() end) end
+		end
+	end)
+	pcall(function()
+		local pg = lp:FindFirstChild("PlayerGui")
+		local dm = pg and pg:FindFirstChild("DontMove")
+		local im = dm and dm:FindFirstChild("ImageLabel")
+		if im then im.Visible = false end
+	end)
+end
+
+local function setZaec(on)
+	zaec = on
+	if on then ncHook() muteZaec() end
+end
+
+local chgCn, chgBusy = nil, false
+local function pressChg(cr)
+	local gui = lp.PlayerGui:FindFirstChild("AntonChigur")
 	if not gui then
-		for _, g in ipairs(LocalPlayer.PlayerGui:GetChildren()) do
+		for _, g in ipairs(lp.PlayerGui:GetChildren()) do
 			if g:FindFirstChild("Orel") and g:FindFirstChild("Reshka") then gui = g break end
 		end
 	end
 	if not gui then return false end
-	local btn
-	if correct == 1 then btn = gui:FindFirstChild("Orel")
-	elseif correct == 2 then btn = gui:FindFirstChild("Reshka")
-	elseif correct == 3 then btn = gui:FindFirstChild("Rebro") end
-	if not btn then return false end
-	local fired = false
+	local b
+	if cr == 1 then b = gui:FindFirstChild("Orel")
+	elseif cr == 2 then b = gui:FindFirstChild("Reshka")
+	elseif cr == 3 then b = gui:FindFirstChild("Rebro") end
+	if not b then return false end
+	local ok = false
 	if getconnections then
-		for _, c in ipairs(getconnections(btn.Activated)) do
-			pcall(function() if c.Fire then c:Fire() fired = true elseif c.Function then c.Function() fired = true end end)
+		for _, c in ipairs(getconnections(b.Activated)) do
+			pcall(function() if c.Fire then c:Fire() ok = true elseif c.Function then c.Function() ok = true end end)
 		end
-		for _, c in ipairs(getconnections(btn.MouseButton1Click)) do
-			pcall(function() if c.Fire then c:Fire() fired = true elseif c.Function then c.Function() fired = true end end)
+		for _, c in ipairs(getconnections(b.MouseButton1Click)) do
+			pcall(function() if c.Fire then c:Fire() ok = true elseif c.Function then c.Function() ok = true end end)
 		end
 	end
-	if not fired then
+	if not ok then
 		task.delay(1.5, function()
-			if chigurOn then pcall(function() ChigurEvent:FireServer(correct) end) end
+			if chigOn then pcall(function() chgEv:FireServer(cr) end) end
 		end)
 	end
 	task.spawn(function()
 		task.wait(0.05)
 		if not gui or not gui.Parent then return end
 		if gui:FindFirstChild("Mouse") then gui.Mouse.Modal = false end
-		for _, elem in ipairs(gui:GetDescendants()) do
-			if elem:IsA("Frame") or elem:IsA("TextLabel") or elem:IsA("TextButton") or elem:IsA("ImageLabel") then
+		for _, e in ipairs(gui:GetDescendants()) do
+			if e:IsA("Frame") or e:IsA("TextLabel") or e:IsA("TextButton") or e:IsA("ImageLabel") then
 				pcall(function()
-					local ti = TweenInfo.new(0.1, Enum.EasingStyle.Sine, Enum.EasingDirection.Out)
-					TweenService:Create(elem, ti, {Position = elem.Position + UDim2.new(0, 0, 0.1, 0)}):Play()
-					if elem:IsA("TextLabel") or elem:IsA("TextButton") then
-						TweenService:Create(elem, TweenInfo.new(0.1), {TextTransparency = 1, BackgroundTransparency = 1}):Play()
+					tw:Create(e, TweenInfo.new(0.1, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {Position = e.Position + UDim2.new(0, 0, 0.1, 0)}):Play()
+					if e:IsA("TextLabel") or e:IsA("TextButton") then
+						tw:Create(e, TweenInfo.new(0.1), {TextTransparency = 1, BackgroundTransparency = 1}):Play()
 					end
-					if elem:IsA("ImageLabel") then
-						TweenService:Create(elem, TweenInfo.new(0.1), {ImageTransparency = 1}):Play()
+					if e:IsA("ImageLabel") then
+						tw:Create(e, TweenInfo.new(0.1), {ImageTransparency = 1}):Play()
 					end
-					if elem:IsA("Frame") then
-						TweenService:Create(elem, TweenInfo.new(0.1), {BackgroundTransparency = 1}):Play()
+					if e:IsA("Frame") then
+						tw:Create(e, TweenInfo.new(0.1), {BackgroundTransparency = 1}):Play()
 					end
 				end)
 			end
 		end
 		task.wait(0.1)
-		for _, elem in ipairs(gui:GetDescendants()) do
-			if elem:IsA("Frame") or elem:IsA("TextLabel") or elem:IsA("TextButton") or elem:IsA("ImageLabel") then
-				pcall(function() elem.Visible = false end)
+		for _, e in ipairs(gui:GetDescendants()) do
+			if e:IsA("Frame") or e:IsA("TextLabel") or e:IsA("TextButton") or e:IsA("ImageLabel") then
+				pcall(function() e.Visible = false end)
 			end
 		end
 	end)
 	return true
 end
-local function setAutoChigur(on)
-	chigurOn = on
-	chigurBusy = false
-	if chigurConn then chigurConn:Disconnect() chigurConn = nil end
+
+local function setChg(on)
+	chigOn = on
+	chgBusy = false
+	if chgCn then chgCn:Disconnect() chgCn = nil end
 	if not on then return end
-	chigurConn = ChigurEvent.OnClientEvent:Connect(function(correct, npc)
-		if not chigurOn then return end
-		if correct == nil or correct == 0 then chigurBusy = false return end
-		if chigurBusy then return end
-		chigurBusy = true
+	chgCn = chgEv.OnClientEvent:Connect(function(cr, npc)
+		if not chigOn then return end
+		if cr == nil or cr == 0 then chgBusy = false return end
+		if chgBusy then return end
+		chgBusy = true
 		task.delay(0.35, function()
-			if not chigurOn then chigurBusy = false return end
-			local ok = pressChigurButton(correct)
+			if not chigOn then chgBusy = false return end
+			local ok = pressChg(cr)
 			if not ok then
 				task.delay(1.45, function()
-					if chigurOn then pcall(function() ChigurEvent:FireServer(correct) end) end
-					chigurBusy = false
+					if chigOn then pcall(function() chgEv:FireServer(cr) end) end
+					chgBusy = false
 				end)
 			else
-				task.delay(2.0, function() chigurBusy = false end)
+				task.delay(2.0, function() chgBusy = false end)
 			end
 		end)
 	end)
 end
 
 local function getHRP()
-	local char = LocalPlayer.Character
-	return char and char:FindFirstChild("HumanoidRootPart")
+	local c = lp.Character
+	return c and c:FindFirstChild("HumanoidRootPart")
 end
-local function isSkipModel(model)
-	return model and SKIP_NAMES[model.Name:lower()] == true
+
+local function isSkip(m)
+	return m and skipN[m.Name:lower()] == true
 end
-local function getAllSkipModels()
-	local models, seen = {}, {}
+
+local function getSkips()
+	local ms, seen = {}, {}
 	local map = workspace:FindFirstChild("Map")
 	if map then
-		for _, floor in ipairs(map:GetChildren()) do
-			if floor.Name:match("^Floor") then
-				for _, child in ipairs(floor:GetChildren()) do
-					if isSkipModel(child) and not seen[child] then
-						seen[child] = true
-						table.insert(models, child)
+		for _, f in ipairs(map:GetChildren()) do
+			if f.Name:match("^Floor") then
+				for _, ch in ipairs(f:GetChildren()) do
+					if isSkip(ch) and not seen[ch] then
+						seen[ch] = true
+						table.insert(ms, ch)
 					end
 				end
 			end
 		end
 	end
-	for _, child in ipairs(workspace:GetChildren()) do
-		if isSkipModel(child) and not seen[child] then
-			seen[child] = true
-			table.insert(models, child)
+	for _, ch in ipairs(workspace:GetChildren()) do
+		if isSkip(ch) and not seen[ch] then
+			seen[ch] = true
+			table.insert(ms, ch)
 		end
 	end
-	return models
+	return ms
 end
-local function doTeleport(endPart, model)
-	local hrp = getHRP()
-	if not hrp or not endPart or not endPart.Parent then return end
-	if (hrp.Position - endPart.Position).Magnitude < 8 then return end
-	lastSkip = os.clock()
-	hrp.AssemblyLinearVelocity = Vector3.zero
-	hrp.AssemblyAngularVelocity = Vector3.zero
-	hrp.CFrame = hrp.CFrame + Vector3.new(0, 50, 0)
+
+local function tpTo(endP, model)
+	local h = getHRP()
+	if not h or not endP or not endP.Parent then return end
+	if (h.Position - endP.Position).Magnitude < 8 then return end
+	lastSk = os.clock()
+	h.AssemblyLinearVelocity = Vector3.zero
+	h.AssemblyAngularVelocity = Vector3.zero
+	h.CFrame = h.CFrame + Vector3.new(0, 50, 0)
 	task.delay(0.1, function()
-		if not hrp or not hrp.Parent then return end
-		hrp.AssemblyLinearVelocity = Vector3.zero
-		hrp.AssemblyAngularVelocity = Vector3.zero
-		hrp.CFrame = endPart.CFrame + Vector3.new(0, 3, 0)
+		if not h or not h.Parent then return end
+		h.AssemblyLinearVelocity = Vector3.zero
+		h.AssemblyAngularVelocity = Vector3.zero
+		h.CFrame = endP.CFrame + Vector3.new(0, 3, 0)
 	end)
 end
-local function scheduleSkip(model, endPart)
-	if pendingSkip[model] then return end
-	if os.clock() - lastSkip < skipCooldown then return end
-	pendingSkip[model] = endPart
-	task.delay(skipDelay, function()
-		if pendingSkip[model] ~= endPart then return end
-		if not skipOn then pendingSkip[model] = nil return end
-		pendingSkip[model] = nil
-		if endPart and endPart.Parent then doTeleport(endPart, model) end
+
+local function schedSk(model, endP)
+	if pnSk[model] then return end
+	if os.clock() - lastSk < skipCd then return end
+	pnSk[model] = endP
+	task.delay(skipDl, function()
+		if pnSk[model] ~= endP then return end
+		if not skipOn then pnSk[model] = nil return end
+		pnSk[model] = nil
+		if endP and endP.Parent then tpTo(endP, model) end
 	end)
 end
-local function trySkip(triggerPart)
+
+local function trySk(trg)
 	if not skipOn then return end
-	local model = triggerPart.Parent
-	if not isSkipModel(model) then return end
-	local endPart = model:FindFirstChild("End")
-	if not endPart or not endPart:IsA("BasePart") then return end
-	local hrp = getHRP()
-	if not hrp then return end
-	if (hrp.Position - endPart.Position).Magnitude < 8 then return end
-	scheduleSkip(model, endPart)
+	local model = trg.Parent
+	if not isSkip(model) then return end
+	local endP = model:FindFirstChild("End")
+	if not endP or not endP:IsA("BasePart") then return end
+	local h = getHRP()
+	if not h then return end
+	if (h.Position - endP.Position).Magnitude < 8 then return end
+	schedSk(model, endP)
 end
-local function hookTrigger(triggerPart, model)
-	if hookedTriggers[triggerPart] then return end
-	if not triggerPart:IsA("BasePart") or not isSkipModel(model) then return end
-	hookedTriggers[triggerPart] = true
-	pcall(function() triggerPart.CanTouch = true end)
-	triggerPart.Touched:Connect(function(hit)
+
+local function hookTrg(trg, model)
+	if hkTrg[trg] then return end
+	if not trg:IsA("BasePart") or not isSkip(model) then return end
+	hkTrg[trg] = true
+	trg.CanTouch = true
+	trg.Touched:Connect(function(hit)
 		if not skipOn then return end
-		local char = LocalPlayer.Character
-		if not char or not hit:IsDescendantOf(char) then return end
-		trySkip(triggerPart)
+		local c = lp.Character
+		if not c or not hit:IsDescendantOf(c) then return end
+		trySk(trg)
 	end)
 end
-local function scanSkipModels()
-	for _, model in ipairs(getAllSkipModels()) do
-		local trig = model:FindFirstChild("Trigger")
-		local en = model:FindFirstChild("End")
-		if trig and en then hookTrigger(trig, model) end
+
+local function scanSk()
+	for _, m in ipairs(getSkips()) do
+		local tr = m:FindFirstChild("Trigger")
+		local en = m:FindFirstChild("End")
+		if tr and en then hookTrg(tr, m) end
 	end
 end
-local function proximitySkip()
+
+local function proxSk()
 	if not skipOn then return end
-	local hrp = getHRP()
-	if not hrp then return end
-	if os.clock() - lastSkip < skipCooldown then return end
-	for _, model in ipairs(getAllSkipModels()) do
-		if pendingSkip[model] then continue end
-		local trig = model:FindFirstChild("Trigger")
-		local en = model:FindFirstChild("End")
-		if not trig or not en then continue end
-		if not trig:IsA("BasePart") or not en:IsA("BasePart") then continue end
-		local radius = math.max(trig.Size.Magnitude * 0.55, 6)
-		if (hrp.Position - trig.Position).Magnitude <= radius then
-			if (hrp.Position - en.Position).Magnitude < 8 then continue end
-			scheduleSkip(model, en)
+	local h = getHRP()
+	if not h then return end
+	if os.clock() - lastSk < skipCd then return end
+	for _, m in ipairs(getSkips()) do
+		if pnSk[m] then continue end
+		local tr = m:FindFirstChild("Trigger")
+		local en = m:FindFirstChild("End")
+		if not tr or not en then continue end
+		if not tr:IsA("BasePart") or not en:IsA("BasePart") then continue end
+		local r = math.max(tr.Size.Magnitude * 0.55, 6)
+		if (h.Position - tr.Position).Magnitude <= r then
+			if (h.Position - en.Position).Magnitude < 8 then continue end
+			schedSk(m, en)
 			return
 		end
 	end
 end
-local function setAutoSkip(on)
+
+local function setSk(on)
 	skipOn = on
-	if skipConn then skipConn:Disconnect() skipConn = nil end
-	table.clear(pendingSkip)
+	if skipCn then skipCn:Disconnect() skipCn = nil end
+	table.clear(pnSk)
 	if not on then return end
-	scanSkipModels()
-	workspace.DescendantAdded:Connect(function(inst)
+	scanSk()
+	workspace.DescendantAdded:Connect(function(i)
 		if not skipOn then return end
-		if inst.Name == "Trigger" and inst:IsA("BasePart") then
-			local model = inst.Parent
-			if isSkipModel(model) and model:FindFirstChild("End") then hookTrigger(inst, model) end
+		if i.Name == "Trigger" and i:IsA("BasePart") then
+			local m = i.Parent
+			if isSkip(m) and m:FindFirstChild("End") then hookTrg(i, m) end
 		end
 	end)
-	skipConn = RunService.Heartbeat:Connect(proximitySkip)
+	skipCn = rs.Heartbeat:Connect(proxSk)
 end
 
-local arturSpawnEvent = Events:FindFirstChild("ArturSpawn")
-local function triggerArturPromptStrict(prompt)
-	if not prompt or not prompt.Parent then return false end
-	if arturPrompted[prompt] then return false end
+local artScEv = ev:FindFirstChild("ArturSpawn")
+local function fireArtPr(pr)
+	if not pr or not pr.Parent then return false end
+	if artPr[pr] then return false end
 	pcall(function()
-		prompt.Enabled = true
-		prompt.RequiresLineOfSight = false
-		prompt.MaxActivationDistance = math.huge
-		prompt.HoldDuration = 0
+		pr.Enabled = true
+		pr.RequiresLineOfSight = false
+		pr.MaxActivationDistance = math.huge
+		pr.HoldDuration = 0
 	end)
-	local touchInterest = prompt:FindFirstChild("TouchInterest")
-	if touchInterest then for i = 1, 5 do pcall(function() touchInterest:Fire() end) end end
+	local ti = pr:FindFirstChild("TouchInterest")
+	if ti then for _ = 1, 5 do pcall(function() ti:Fire() end) end end
 	if fireproximityprompt then
-		local ok = pcall(fireproximityprompt, prompt)
-		if ok then arturPrompted[prompt] = true return true end
+		local ok = pcall(fireproximityprompt, pr)
+		if ok then artPr[pr] = true return true end
 	end
 	local ok = pcall(function()
-		prompt:InputHoldBegin()
+		pr:InputHoldBegin()
 		task.wait(0.1)
-		prompt:InputHoldEnd()
+		pr:InputHoldEnd()
 	end)
-	if ok then arturPrompted[prompt] = true return true end
+	if ok then artPr[pr] = true return true end
 	return false
 end
-local function processArturByHighlight(highlight)
-	if not highlight or highlight.Name ~= "ArturHighlight" then return end
-	local artur = highlight.Adornee
-	if not artur or not artur.Parent then return end
-	if arturPrompted[artur] then return end
-	local hrp = artur:FindFirstChild("HumanoidRootPart")
-	if not hrp then return end
-	local prompt = hrp:FindFirstChildOfClass("ProximityPrompt")
-	if not prompt then return end
-	if triggerArturPromptStrict(prompt) then
-		arturPrompted[artur] = true
+
+local function doArtHl(hl)
+	if not hl or hl.Name ~= "ArturHighlight" then return end
+	local a = hl.Adornee
+	if not a or not a.Parent then return end
+	if artPr[a] then return end
+	local h = a:FindFirstChild("HumanoidRootPart")
+	if not h then return end
+	local pr = h:FindFirstChildOfClass("ProximityPrompt")
+	if not pr then return end
+	if fireArtPr(pr) then
+		artPr[a] = true
 		task.delay(0.1, function()
-			if artur.Parent then pcall(function() artur:Destroy() end) end
+			if a.Parent then pcall(function() a:Destroy() end) end
 		end)
 	end
 end
-local function expandCheckMobs()
-	local hitboxes = workspace:FindFirstChild("Hitboxes")
-	if not hitboxes then return end
-	for _, desc in ipairs(hitboxes:GetDescendants()) do
-		if desc.Name == "ArturCheckMobs" and desc:IsA("BasePart") then
-			pcall(function()
-				desc.Size = Vector3.new(2048, 2048, 2048)
-				desc.CanCollide = false
-				desc.CanTouch = true
-				desc.CanQuery = true
-				desc.Transparency = 1
-			end)
+
+local function growMobs()
+	local hb = workspace:FindFirstChild("Hitboxes")
+	if not hb then return end
+	for _, d in ipairs(hb:GetDescendants()) do
+		if d.Name == "ArturCheckMobs" and d:IsA("BasePart") then
+			d.Size = Vector3.new(2048, 2048, 2048)
+			d.CanCollide = false
+			d.CanTouch = true
+			d.CanQuery = true
+			d.Transparency = 1
 		end
 	end
 end
-local function scanAllArturHighlights()
-	for _, desc in ipairs(workspace:GetDescendants()) do
-		if desc.Name == "ArturHighlight" then processArturByHighlight(desc) end
+
+local function scanArtHl()
+	for _, d in ipairs(workspace:GetDescendants()) do
+		if d.Name == "ArturHighlight" then doArtHl(d) end
 	end
-	expandCheckMobs()
+	growMobs()
 end
-local function setAutoArtur(on)
-	arturOn = on
-	if arturFolderConn then arturFolderConn:Disconnect() arturFolderConn = nil end
-	if arturChildConn then arturChildConn:Disconnect() arturChildConn = nil end
-	if arturSpawnConn then arturSpawnConn:Disconnect() arturSpawnConn = nil end
-	if not on then table.clear(arturPrompted) return end
-	scanAllArturHighlights()
-	arturChildConn = workspace.DescendantAdded:Connect(function(descendant)
-		if not arturOn then return end
-		if descendant.Name == "ArturHighlight" then
-			task.defer(function() processArturByHighlight(descendant) end)
-		elseif descendant.Name == "ArturCheckMobs" and descendant:IsA("BasePart") then
-			pcall(function()
-				descendant.Size = Vector3.new(2048, 2048, 2048)
-				descendant.CanCollide = false
-				descendant.CanTouch = true
-				descendant.CanQuery = true
-				descendant.Transparency = 1
-			end)
+
+local function setArt(on)
+	artOn = on
+	if artFc then artFc:Disconnect() artFc = nil end
+	if artCc then artCc:Disconnect() artCc = nil end
+	if artSc then artSc:Disconnect() artSc = nil end
+	if not on then table.clear(artPr) return end
+	scanArtHl()
+	artCc = workspace.DescendantAdded:Connect(function(d)
+		if not artOn then return end
+		if d.Name == "ArturHighlight" then
+			task.defer(function() doArtHl(d) end)
+		elseif d.Name == "ArturCheckMobs" and d:IsA("BasePart") then
+			d.Size = Vector3.new(2048, 2048, 2048)
+			d.CanCollide = false
+			d.CanTouch = true
+			d.CanQuery = true
+			d.Transparency = 1
 		end
 	end)
-	if arturSpawnEvent then
-		arturSpawnConn = arturSpawnEvent.OnClientEvent:Connect(function(a1, a2)
-			if not arturOn then return end
+	if artScEv then
+		artSc = artScEv.OnClientEvent:Connect(function(a1, a2)
+			if not artOn then return end
 			if a2 == "Start" then
 				task.delay(0.1, function()
-					if not arturOn then return end
+					if not artOn then return end
 					if a1 and a1.Parent then
 						local hl = a1:FindFirstChild("ArturHighlight")
-						if hl then processArturByHighlight(hl) end
+						if hl then doArtHl(hl) end
 					end
 				end)
 			end
 		end)
 	end
 	task.spawn(function()
-		while arturOn do task.wait(1) scanAllArturHighlights() end
+		while artOn do task.wait(1) scanArtHl() end
 	end)
 end
 
-local function processSkvorec(skvorec)
-	if not skvorec or skvorec.Name ~= "Skvorec" then return end
-	if skvorecPrompted[skvorec] then return end
-	pcall(function() skvorec:Destroy() end)
-	skvorecPrompted[skvorec] = true
+local function killSkv(s)
+	if not s or s.Name ~= "Skvorec" then return end
+	if skvPr[s] then return end
+	s:Destroy()
+	skvPr[s] = true
 end
-local function removeShakeCheckHitbox()
-	local hitboxes = workspace:FindFirstChild("Hitboxes")
-	if not hitboxes then return end
-	for _, desc in ipairs(hitboxes:GetDescendants()) do
-		if desc.Name == "ShakeCheckHitbox" then pcall(function() desc:Destroy() end) end
+
+local function rmShk()
+	local hb = workspace:FindFirstChild("Hitboxes")
+	if not hb then return end
+	for _, d in ipairs(hb:GetDescendants()) do
+		if d.Name == "ShakeCheckHitbox" then d:Destroy() end
 	end
 end
-local function scanSkvorec()
-	local hitboxes = workspace:FindFirstChild("Hitboxes")
-	if not hitboxes then return end
-	for _, descendant in ipairs(hitboxes:GetDescendants()) do
-		if descendant.Name == "Skvorec" then processSkvorec(descendant)
-		elseif descendant.Name == "ShakeCheckHitbox" then pcall(function() descendant:Destroy() end) end
+
+local function scanSkv()
+	local hb = workspace:FindFirstChild("Hitboxes")
+	if not hb then return end
+	for _, d in ipairs(hb:GetDescendants()) do
+		if d.Name == "Skvorec" then killSkv(d)
+		elseif d.Name == "ShakeCheckHitbox" then d:Destroy() end
 	end
 end
-local function setAutoSkvorec(on)
-	skvorecOn = on
-	if skvorecFolderConn then skvorecFolderConn:Disconnect() skvorecFolderConn = nil end
-	if skvorecChildConn then skvorecChildConn:Disconnect() skvorecChildConn = nil end
-	if not on then table.clear(skvorecPrompted) return end
-	scanSkvorec()
-	removeShakeCheckHitbox()
-	local hitboxes = workspace:FindFirstChild("Hitboxes")
-	if hitboxes then
-		skvorecChildConn = hitboxes.DescendantAdded:Connect(function(descendant)
-			if not skvorecOn then return end
-			if descendant.Name == "Skvorec" then task.defer(function() processSkvorec(descendant) end)
-			elseif descendant.Name == "ShakeCheckHitbox" then task.defer(function() pcall(function() descendant:Destroy() end) end) end
+
+local function setSkv(on)
+	skvOn = on
+	if skvFc then skvFc:Disconnect() skvFc = nil end
+	if skvCc then skvCc:Disconnect() skvCc = nil end
+	if not on then table.clear(skvPr) return end
+	scanSkv()
+	rmShk()
+	local hb = workspace:FindFirstChild("Hitboxes")
+	if hb then
+		skvCc = hb.DescendantAdded:Connect(function(d)
+			if not skvOn then return end
+			if d.Name == "Skvorec" then task.defer(function() killSkv(d) end)
+			elseif d.Name == "ShakeCheckHitbox" then task.defer(function() d:Destroy() end) end
 		end)
 	end
-	skvorecFolderConn = workspace.ChildAdded:Connect(function(child)
-		if skvorecOn and child.Name == "Hitboxes" then
-			task.delay(0.1, function() scanSkvorec() removeShakeCheckHitbox() end)
+	skvFc = workspace.ChildAdded:Connect(function(c)
+		if skvOn and c.Name == "Hitboxes" then
+			task.delay(0.1, function() scanSkv() rmShk() end)
 		end
 	end)
 	task.spawn(function()
-		while skvorecOn do task.wait(1) scanSkvorec() removeShakeCheckHitbox() end
+		while skvOn do task.wait(1) scanSkv() rmShk() end
 	end)
 end
 
-local function getAmamamGui()
-	local pg = LocalPlayer:FindFirstChild("PlayerGui")
+local function getAmG()
+	local pg = lp:FindFirstChild("PlayerGui")
 	return pg and pg:FindFirstChild("amamam")
 end
-local function fireSelected(gui, name)
-	local selected = gui:FindFirstChild("Selected")
-	if selected and selected:IsA("BindableEvent") then selected:Fire(name) return true end
+
+local function fireSel(gui, n)
+	local s = gui:FindFirstChild("Selected")
+	if s and s:IsA("BindableEvent") then s:Fire(n) return true end
 	return false
 end
-local function onFoodSound(gui, sound)
-	if not golodOn or not sound:IsA("Sound") then return end
-	if not FOOD[sound.Name] then return end
-	golodRoundId += 1
-	local myRound = golodRoundId
+
+local function onFood(gui, s)
+	if not golOn or not s:IsA("Sound") then return end
+	if not food[s.Name] then return end
+	golId += 1
+	local my = golId
 	task.delay(0.25, function()
-		if not golodOn or myRound ~= golodRoundId then return end
+		if not golOn or my ~= golId then return end
 		if not gui.Parent or not gui.Enabled then return end
-		fireSelected(gui, sound.Name)
+		fireSel(gui, s.Name)
 		task.delay(0.4, function()
-			if not golodOn or myRound ~= golodRoundId then return end
-			if sound.Parent and sound.IsPlaying then fireSelected(gui, sound.Name) end
+			if not golOn or my ~= golId then return end
+			if s.Parent and s.IsPlaying then fireSel(gui, s.Name) end
 		end)
 	end)
 end
-local function bindGolodGui(gui)
-	if golodChildConn then golodChildConn:Disconnect() golodChildConn = nil end
-	golodChildConn = gui.ChildAdded:Connect(function(child)
-		if not golodOn then return end
-		if child:IsA("Sound") and FOOD[child.Name] then
-			if child.IsPlaying then onFoodSound(gui, child)
-			else child.Played:Connect(function() onFoodSound(gui, child) end) end
+
+local function bindGol(gui)
+	if golCc then golCc:Disconnect() golCc = nil end
+	golCc = gui.ChildAdded:Connect(function(c)
+		if not golOn then return end
+		if c:IsA("Sound") and food[c.Name] then
+			if c.IsPlaying then onFood(gui, c)
+			else c.Played:Connect(function() onFood(gui, c) end) end
 		end
 	end)
-	for _, child in ipairs(gui:GetChildren()) do
-		if child:IsA("Sound") and FOOD[child.Name] and child.IsPlaying then onFoodSound(gui, child) end
+	for _, c in ipairs(gui:GetChildren()) do
+		if c:IsA("Sound") and food[c.Name] and c.IsPlaying then onFood(gui, c) end
 	end
 end
-local function setAutoGolod(on)
-	golodOn = on
-	golodRoundId = 0
-	if golodConn then golodConn:Disconnect() golodConn = nil end
-	if golodChildConn then golodChildConn:Disconnect() golodChildConn = nil end
+
+local function setGol(on)
+	golOn = on
+	golId = 0
+	if golCn then golCn:Disconnect() golCn = nil end
+	if golCc then golCc:Disconnect() golCc = nil end
 	if not on then return end
-	local gui = getAmamamGui()
-	if gui then bindGolodGui(gui) end
-	LocalPlayer:WaitForChild("PlayerGui").ChildAdded:Connect(function(child)
-		if golodOn and child.Name == "amamam" then task.wait(0.1) bindGolodGui(child) end
+	local g = getAmG()
+	if g then bindGol(g) end
+	lp:WaitForChild("PlayerGui").ChildAdded:Connect(function(c)
+		if golOn and c.Name == "amamam" then task.wait(0.1) bindGol(c) end
 	end)
-	local amamamEv = Events:FindFirstChild("amamam")
-	if amamamEv then
-		golodConn = amamamEv.OnClientEvent:Connect(function()
-			if not golodOn then return end
+	local ae = ev:FindFirstChild("amamam")
+	if ae then
+		golCn = ae.OnClientEvent:Connect(function()
+			if not golOn then return end
 			task.delay(0.5, function()
-				local g = getAmamamGui()
-				if g then bindGolodGui(g) end
+				local g2 = getAmG()
+				if g2 then bindGol(g2) end
 			end)
 		end)
 	end
 end
 
-local function clearRoom0000()
-	for part, hl in pairs(room0000Highlights) do pcall(function() hl:Destroy() end) end
-	table.clear(room0000Highlights)
+local function clrRm()
+	for p, entry in pairs(rmTag) do
+		destroyTag(entry)
+	end
+	table.clear(rmTag)
 end
-local function highlightArturPart(part)
-	if not part or not part:IsA("BasePart") then return end
-	if room0000Highlights[part] then room0000Highlights[part].Enabled = true return end
-	local hl = Instance.new("Highlight")
-	hl.Name = "RoomHL"
-	hl.Adornee = part
-	hl.FillColor = Color3.fromRGB(0, 255, 200)
-	hl.OutlineColor = Color3.fromRGB(255, 0, 180)
-	hl.FillTransparency = 0.55
-	hl.OutlineTransparency = 0
-	hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-	hl.Parent = part
-	room0000Highlights[part] = hl
+
+local function hlArt(p)
+	if not p or not p:IsA("BasePart") then return end
+	if rmTag[p] then
+		if rmTag[p].hl then rmTag[p].hl.Enabled = true end
+		return
+	end
+	local hl = makeOutline(p, ESP.RoomLine)
+	if hl then
+		rmTag[p] = { hl = hl }
+	end
 end
-local function scanArturRooms()
+
+local function scanRms()
 	local map = workspace:FindFirstChild("Map")
 	if not map then return end
-	for _, floor in ipairs(map:GetChildren()) do
-		if not floor.Name:match("^Floor") then continue end
-		for _, desc in ipairs(floor:GetDescendants()) do
-			if desc.Name == "ArturRoom" then
-				local door = desc:FindFirstChild("Door")
+	for _, f in ipairs(map:GetChildren()) do
+		if not f.Name:match("^Floor") then continue end
+		for _, d in ipairs(f:GetDescendants()) do
+			if d.Name == "ArturRoom" then
+				local door = d:FindFirstChild("Door")
 				local part = door and door:FindFirstChild("Part")
-				if part then highlightArturPart(part) end
+				if part then hlArt(part) end
 			end
 		end
 	end
 end
-local function setEspRoom0000(on)
-	room0000On = on
-	if room0000Conn then room0000Conn:Disconnect() room0000Conn = nil end
-	if not on then clearRoom0000() return end
-	scanArturRooms()
+
+local function setEspRm(on)
+	rmOn = on
+	if rmCn then rmCn:Disconnect() rmCn = nil end
+	if not on then clrRm() return end
+	scanRms()
 	local map = workspace:FindFirstChild("Map")
 	if map then
-		room0000Conn = map.DescendantAdded:Connect(function(inst)
-			if not room0000On then return end
-			if inst.Name == "ArturRoom" then
+		rmCn = map.DescendantAdded:Connect(function(i)
+			if not rmOn then return end
+			if i.Name == "ArturRoom" then
 				task.defer(function()
-					local door = inst:FindFirstChild("Door")
+					local door = i:FindFirstChild("Door")
 					local part = door and door:FindFirstChild("Part")
-					if part then highlightArturPart(part) end
+					if part then hlArt(part) end
 				end)
-			elseif inst.Name == "Part" and inst:IsA("BasePart") then
-				local door = inst.Parent
-				local room = door and door.Parent
-				if door and door.Name == "Door" and room and room.Name == "ArturRoom" then
-					highlightArturPart(inst)
+			elseif i.Name == "Part" and i:IsA("BasePart") then
+				local door = i.Parent
+				local rm = door and door.Parent
+				if door and door.Name == "Door" and rm and rm.Name == "ArturRoom" then
+					hlArt(i)
 				end
 			end
 		end)
 	end
 	task.spawn(function()
-		while room0000On do scanArturRooms() task.wait(2.5) end
+		while rmOn do scanRms() task.wait(2.5) end
 	end)
 end
 
-local function clearItemHighlights()
-	for model, hl in pairs(espItemHighlights) do pcall(function() if hl then hl:Destroy() end end) end
-	table.clear(espItemHighlights)
-end
-local function highlightItemModel(model)
-	if not espItemsOn then return end
-	if not model or not model:IsA("Model") or not model.Parent then return end
-	local hl = espItemHighlights[model] or model:FindFirstChild("ItemHL")
-	if not hl then
-		hl = Instance.new("Highlight")
-		hl.Name = "ItemHL"
-		hl.Parent = model
+local function isCoin(m)
+	if not m then return false end
+	local n = m.Name:lower()
+	for cn in pairs(coinN) do
+		if n:find(cn) then return true end
 	end
-	hl.Adornee = model
-	hl.FillColor = Color3.fromRGB(0, 200, 255)
-	hl.OutlineColor = Color3.fromRGB(255, 215, 0)
-	hl.FillTransparency = 0.45
-	hl.OutlineTransparency = 0
-	hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-	hl.Enabled = true
-	espItemHighlights[model] = hl
+	return false
 end
-local function scanItemSpawns()
+
+local function clrIHl()
+	for m, entry in pairs(espTag) do
+		destroyTag(entry)
+	end
+	table.clear(espTag)
+end
+
+local function hlItem(m)
+	if not espOn then return end
+	if not m or not m:IsA("Model") or not m.Parent then return end
+
+	local coin = isCoin(m)
+	local line = coin and ESP.CoinLine or ESP.ItemLine
+
+	local entry = espTag[m]
+	if entry and entry.hl and entry.hl.Parent then
+		entry.hl.Enabled = true
+		entry.hl.OutlineColor = line
+		return
+	end
+
+	local hl = makeOutline(m, line)
+	if hl then
+		espTag[m] = { hl = hl, coin = coin }
+	end
+end
+
+local function scanIS()
 	local map = workspace:FindFirstChild("Map")
 	if not map then return end
-	for _, floor in ipairs(map:GetChildren()) do
-		if floor.Name:match("^Floor") then
-			for _, desc in ipairs(floor:GetDescendants()) do
-				if desc.Name == "ItemSpawns" then
-					for _, item in ipairs(desc:GetChildren()) do
-						if item:IsA("Model") then highlightItemModel(item) end
+	for _, f in ipairs(map:GetChildren()) do
+		if f.Name:match("^Floor") then
+			for _, d in ipairs(f:GetDescendants()) do
+				if d.Name == "ItemSpawns" then
+					for _, it in ipairs(d:GetChildren()) do
+						if it:IsA("Model") then hlItem(it) end
 					end
 				end
 			end
 		end
 	end
 end
-local function bindItemsMap(map)
-	if espItemsConn then espItemsConn:Disconnect() espItemsConn = nil end
-	espItemsConn = map.DescendantAdded:Connect(function(inst)
-		if not espItemsOn then return end
-		if inst.Name == "ItemSpawns" then
+
+local function bindIM(map)
+	if espCn then espCn:Disconnect() espCn = nil end
+	espCn = map.DescendantAdded:Connect(function(i)
+		if not espOn then return end
+		if i.Name == "ItemSpawns" then
 			task.defer(function()
-				for _, item in ipairs(inst:GetChildren()) do
-					if item:IsA("Model") then highlightItemModel(item) end
+				for _, it in ipairs(i:GetChildren()) do
+					if it:IsA("Model") then hlItem(it) end
 				end
 			end)
-		elseif inst:IsA("Model") and inst.Parent and inst.Parent.Name == "ItemSpawns" then
-			task.defer(function() highlightItemModel(inst) end)
+		elseif i:IsA("Model") and i.Parent and i.Parent.Name == "ItemSpawns" then
+			task.defer(function() hlItem(i) end)
 		end
 	end)
-end
-local function startItemsLoop()
-	if espItemsLoopRunning then return end
-	espItemsLoopRunning = true
-	task.spawn(function()
-		while espItemsOn do scanItemSpawns() task.wait(2) end
-		espItemsLoopRunning = false
-	end)
-end
-local function setEspItems(on)
-	espItemsOn = on
-	if espItemsConn then espItemsConn:Disconnect() espItemsConn = nil end
-	if espItemsWorkspaceConn then espItemsWorkspaceConn:Disconnect() espItemsWorkspaceConn = nil end
-	if not on then clearItemHighlights() return end
-	scanItemSpawns()
-	local map = workspace:FindFirstChild("Map")
-	if map then bindItemsMap(map) end
-	espItemsWorkspaceConn = workspace.ChildAdded:Connect(function(child)
-		if not espItemsOn then return end
-		if child.Name == "Map" then
-			task.defer(function() bindItemsMap(child) scanItemSpawns() end)
-		end
-	end)
-	startItemsLoop()
 end
 
-local function isCoinModel(model)
-	if not model then return false end
-	local name = model.Name:lower()
-	for coinName in pairs(COIN_NAMES) do
-		if name:find(coinName) then return true end
-	end
-	return false
+local function startIL()
+	if espRun then return end
+	espRun = true
+	task.spawn(function()
+		while espOn do
+			scanIS()
+			for m, entry in pairs(espTag) do
+				if not m.Parent then
+					destroyTag(entry)
+					espTag[m] = nil
+				end
+			end
+			task.wait(2)
+		end
+		espRun = false
+	end)
 end
-local function rebuildCache()
-	if not autoPickupOn then return end
-	local newCache = {}
-	local hrp = getHRP()
-	if not hrp then autoPickupCache = newCache return end
+
+local function setEsp(on)
+	espOn = on
+	if espCn then espCn:Disconnect() espCn = nil end
+	if espWc then espWc:Disconnect() espWc = nil end
+	if not on then clrIHl() return end
+	scanIS()
 	local map = workspace:FindFirstChild("Map")
-	if not map then autoPickupCache = newCache return end
-	for _, floor in ipairs(map:GetChildren()) do
-		if floor.Name:match("^Floor") then
-			for _, desc in ipairs(floor:GetDescendants()) do
-				if desc.Name == "ItemSpawns" then
-					for _, item in ipairs(desc:GetChildren()) do
-						if item:IsA("Model") then
-							local coin = isCoinModel(item)
-							for _, child in ipairs(item:GetDescendants()) do
-								if child:IsA("ProximityPrompt") and child.Enabled then
-									local part = child.Parent:IsA("BasePart") and child.Parent or child.Parent:FindFirstChildWhichIsA("BasePart")
-									if part then
-										table.insert(newCache, {
-											prompt = child, part = part,
-											distance = (hrp.Position - part.Position).Magnitude,
-											isCoin = coin,
+	if map then bindIM(map) end
+	espWc = workspace.ChildAdded:Connect(function(c)
+		if not espOn then return end
+		if c.Name == "Map" then
+			task.defer(function() bindIM(c) scanIS() end)
+		end
+	end)
+	startIL()
+end
+
+local function rbCache()
+	if not pkOn then return end
+	local nc = {}
+	local h = getHRP()
+	if not h then pkCh = nc return end
+	local map = workspace:FindFirstChild("Map")
+	if not map then pkCh = nc return end
+	for _, f in ipairs(map:GetChildren()) do
+		if f.Name:match("^Floor") then
+			for _, d in ipairs(f:GetDescendants()) do
+				if d.Name == "ItemSpawns" then
+					for _, it in ipairs(d:GetChildren()) do
+						if it:IsA("Model") then
+							local cn = isCoin(it)
+							for _, c in ipairs(it:GetDescendants()) do
+								if c:IsA("ProximityPrompt") and c.Enabled then
+									local p = c.Parent:IsA("BasePart") and c.Parent or c.Parent:FindFirstChildWhichIsA("BasePart")
+									if p then
+										table.insert(nc, {
+											prompt = c, part = p,
+											distance = (h.Position - p.Position).Magnitude,
+											isCoin = cn,
 										})
 									end
 								end
@@ -821,105 +870,109 @@ local function rebuildCache()
 			end
 		end
 	end
-	autoPickupCache = newCache
+	pkCh = nc
 end
-local function findBestPrompt()
-	local hrp = getHRP()
-	if not hrp or #autoPickupCache == 0 then return nil end
-	local bestCoin, bestCoinDist = nil, math.huge
-	local bestOther, bestOtherDist = nil, math.huge
-	for _, entry in ipairs(autoPickupCache) do
-		if not entry.prompt.Enabled then continue end
-		if autoPickupCooldown[entry.prompt] then continue end
-		local dist = (hrp.Position - entry.part.Position).Magnitude
-		local maxDist = entry.prompt.MaxActivationDistance > 0 and entry.prompt.MaxActivationDistance or 10
-		if dist <= maxDist + 2 then
-			if entry.isCoin and dist < bestCoinDist then bestCoin, bestCoinDist = entry, dist
-			elseif not entry.isCoin and dist < bestOtherDist then bestOther, bestOtherDist = entry, dist end
+
+local function findBest()
+	local h = getHRP()
+	if not h or #pkCh == 0 then return nil end
+	local bc, bcd = nil, math.huge
+	local bo, bod = nil, math.huge
+	for _, e in ipairs(pkCh) do
+		if not e.prompt.Enabled then continue end
+		if pkCd[e.prompt] then continue end
+		local d = (h.Position - e.part.Position).Magnitude
+		local md = e.prompt.MaxActivationDistance > 0 and e.prompt.MaxActivationDistance or 10
+		if d <= md + 2 then
+			if e.isCoin and d < bcd then bc, bcd = e, d
+			elseif not e.isCoin and d < bod then bo, bod = e, d end
 		end
 	end
-	return bestCoin or bestOther
+	return bc or bo
 end
-local function firePrompt(prompt)
-	if not prompt or not prompt.Parent then return end
+
+local function fireP(p)
+	if not p or not p.Parent then return end
 	pcall(function()
-		prompt.Enabled = true
-		prompt.RequiresLineOfSight = false
-		prompt.MaxActivationDistance = math.huge
-		prompt.HoldDuration = 0
+		p.Enabled = true
+		p.RequiresLineOfSight = false
+		p.MaxActivationDistance = math.huge
+		p.HoldDuration = 0
 	end)
-	if fireproximityprompt then pcall(fireproximityprompt, prompt)
-	else pcall(function() prompt:InputHoldBegin() task.wait(0.05) prompt:InputHoldEnd() end) end
-	autoPickupCooldown[prompt] = true
-	task.delay(1.5, function() autoPickupCooldown[prompt] = nil end)
+	if fireproximityprompt then pcall(fireproximityprompt, p)
+	else pcall(function() p:InputHoldBegin() task.wait(0.05) p:InputHoldEnd() end) end
+	pkCd[p] = true
+	task.delay(1.5, function() pkCd[p] = nil end)
 end
-local function pickupTick()
-	if not autoPickupOn then return end
-	local best = findBestPrompt()
-	if best then firePrompt(best.prompt) end
+
+local function pkTick()
+	if not pkOn then return end
+	local b = findBest()
+	if b then fireP(b.prompt) end
 end
-local function setAutoPickup(on)
-	autoPickupOn = on
-	if autoPickupScanConn then autoPickupScanConn:Disconnect() autoPickupScanConn = nil end
-	if autoPickupHeartbeatConn then autoPickupHeartbeatConn:Disconnect() autoPickupHeartbeatConn = nil end
-	if not on then autoPickupCache = {} table.clear(autoPickupCooldown) return end
-	rebuildCache()
-	autoPickupHeartbeatConn = RunService.Heartbeat:Connect(pickupTick)
-	local lastScan = 0
-	autoPickupScanConn = RunService.Heartbeat:Connect(function()
-		if not autoPickupOn then return end
-		local now = os.clock()
-		if now - lastScan >= 0.7 then lastScan = now rebuildCache() end
+
+local function setPk(on)
+	pkOn = on
+	if pkSc then pkSc:Disconnect() pkSc = nil end
+	if pkHc then pkHc:Disconnect() pkHc = nil end
+	if not on then pkCh = {} table.clear(pkCd) return end
+	rbCache()
+	pkHc = rs.Heartbeat:Connect(pkTick)
+	local ls = 0
+	pkSc = rs.Heartbeat:Connect(function()
+		if not pkOn then return end
+		local n = os.clock()
+		if n - ls >= 0.7 then ls = n rbCache() end
 	end)
 end
 
-local function findMeatsModels()
-	local models, seen = {}, {}
-	local ok, tagged = pcall(function() return CollectionService:GetTagged("MeatsMonster") end)
-	if ok and tagged then
-		for _, m in ipairs(tagged) do
-			if m:IsDescendantOf(workspace) and not seen[m] then seen[m] = true table.insert(models, m) end
+local function findMeats()
+	local ms, seen = {}, {}
+	local ok, tg = pcall(function() return cns:GetTagged("MeatsMonster") end)
+	if ok and tg then
+		for _, m in ipairs(tg) do
+			if m:IsDescendantOf(workspace) and not seen[m] then seen[m] = true table.insert(ms, m) end
 		end
 	end
 	local map = workspace:FindFirstChild("Map")
 	if map then
-		for _, floor in ipairs(map:GetChildren()) do
-			if floor.Name:match("^Floor") then
-				local meat = floor:FindFirstChild("Meat")
-				local meats = meat and meat:FindFirstChild("meats")
-				if meats then
-					for _, child in ipairs(meats:GetChildren()) do
-						if not seen[child] then seen[child] = true table.insert(models, child) end
+		for _, f in ipairs(map:GetChildren()) do
+			if f.Name:match("^Floor") then
+				local mt = f:FindFirstChild("Meat")
+				local mts = mt and mt:FindFirstChild("meats")
+				if mts then
+					for _, c in ipairs(mts:GetChildren()) do
+						if not seen[c] then seen[c] = true table.insert(ms, c) end
 					end
 				end
 			end
 		end
 	end
-	local wsMeats = workspace:FindFirstChild("meats")
-	if wsMeats then
-		for _, child in ipairs(wsMeats:GetChildren()) do
-			if not seen[child] then seen[child] = true table.insert(models, child) end
+	local wm = workspace:FindFirstChild("meats")
+	if wm then
+		for _, c in ipairs(wm:GetChildren()) do
+			if not seen[c] then seen[c] = true table.insert(ms, c) end
 		end
 	end
-	return models
+	return ms
 end
-local function hookMeatsRaycast()
-	if meatsRaycastHooked or not hookfunction then return end
-	meatsRaycastOrig = hookfunction(workspace.Raycast, function(self, origin, direction, params)
-		if not freezeMeatOn then return meatsRaycastOrig(self, origin, direction, params) end
-		local realResult = meatsRaycastOrig(self, origin, direction, params)
-		for _, meat in ipairs(findMeatsModels()) do
+
+local function hookMr()
+	if mrHk or not hookfunction then return end
+	mrOr = hookfunction(workspace.Raycast, function(self, orig, dir, params)
+		if not fzOn then return mrOr(self, orig, dir, params) end
+		local real = mrOr(self, orig, dir, params)
+		for _, meat in ipairs(findMeats()) do
 			if meat and meat.Parent then
-				for _, desc in ipairs(meat:GetDescendants()) do
-					if desc:IsA("BasePart") and desc.Transparency < 1 then
-						local toMeat = desc.Position - origin
-						if toMeat.Magnitude < 0.1 then return meatsRaycastOrig(self, origin, direction, params) end
-						local dirUnit = direction.Unit
-						local dot = dirUnit:Dot(toMeat.Unit)
-						if dot > 0.85 and toMeat.Magnitude < direction.Magnitude + 5 then
+				for _, d in ipairs(meat:GetDescendants()) do
+					if d:IsA("BasePart") and d.Transparency < 1 then
+						local tm = d.Position - orig
+						if tm.Magnitude < 0.1 then return mrOr(self, orig, dir, params) end
+						local du = dir.Unit
+						if du:Dot(tm.Unit) > 0.85 and tm.Magnitude < dir.Magnitude + 5 then
 							return {
-								Instance = desc, Position = desc.Position, Distance = toMeat.Magnitude,
-								Material = Enum.Material.Plastic, Normal = -dirUnit,
+								Instance = d, Position = d.Position, Distance = tm.Magnitude,
+								Material = Enum.Material.Plastic, Normal = -du,
 							}
 						end
 						break
@@ -927,83 +980,84 @@ local function hookMeatsRaycast()
 				end
 			end
 		end
-		return realResult
+		return real
 	end)
-	meatsRaycastHooked = true
+	mrHk = true
 end
-local function setFreezeMeat(on)
-	freezeMeatOn = on
-	if freezeMeatConn then freezeMeatConn:Disconnect() freezeMeatConn = nil end
+
+local function setFz(on)
+	fzOn = on
+	if fzCn then fzCn:Disconnect() fzCn = nil end
 	if not on then return end
-	hookMeatsRaycast()
-	if not oldMeatsNamecall and hookmetamethod then
-		oldMeatsNamecall = hookmetamethod(game, "__namecall", function(self, ...)
-			local method = getnamecallmethod()
-			local args = {...}
-			if method == "FireServer" and self == MeatsWatchEvent then
-				if args[2] == false then return nil end
+	hookMr()
+	if not oldMn and hookmetamethod then
+		oldMn = hookmetamethod(game, "__namecall", function(self, ...)
+			local m = getnamecallmethod()
+			local a = {...}
+			if m == "FireServer" and self == mtEv then
+				if a[2] == false then return nil end
 			end
-			return oldMeatsNamecall(self, ...)
+			return oldMn(self, ...)
 		end)
 	end
-	freezeMeatConn = RunService.Heartbeat:Connect(function()
-		if not freezeMeatOn then return end
-		for _, meat in ipairs(findMeatsModels()) do
-			if meat and meat.Parent then pcall(function() MeatsWatchEvent:FireServer(meat, true) end) end
+	fzCn = rs.Heartbeat:Connect(function()
+		if not fzOn then return end
+		for _, meat in ipairs(findMeats()) do
+			if meat and meat.Parent then pcall(function() mtEv:FireServer(meat, true) end) end
 		end
 	end)
 end
 
-local function setNoStun(on)
-	noStunOn = on
+local function setStun(on)
+	stunOn = on
 	if on then
-		if not oldBindAction and hookfunction then
-			oldBindAction = hookfunction(ContextActionService.BindAction, function(self, actionName, functionToBind, createTouchButton, ...)
-				if actionName == "BlockE" then return end
-				return oldBindAction(self, actionName, functionToBind, createTouchButton, ...)
+		if not oldBa and hookfunction then
+			oldBa = hookfunction(cas.BindAction, function(self, an, fn, ct, ...)
+				if an == "BlockE" then return end
+				return oldBa(self, an, fn, ct, ...)
 			end)
 		end
-		ContextActionService:UnbindAction("BlockE")
+		cas:UnbindAction("BlockE")
 	end
 end
 
-local function setDisableShake(on)
+local function setShk(on)
 	shakeOn = on
-	pcall(function() RunService:UnbindFromRenderStep("CameraShaker") end)
-	if on and not oldBindRenderStep and hookfunction then
-		oldBindRenderStep = hookfunction(RunService.BindToRenderStep, function(self, name, ...)
-			if shakeOn and name == "CameraShaker" then return end
-			return oldBindRenderStep(self, name, ...)
+	pcall(function() rs:UnbindFromRenderStep("CameraShaker") end)
+	if on and not oldBrs and hookfunction then
+		oldBrs = hookfunction(rs.BindToRenderStep, function(self, n, ...)
+			if shakeOn and n == "CameraShaker" then return end
+			return oldBrs(self, n, ...)
 		end)
 	end
 end
 
-local function setGodModeShkaf(on)
-	godModeShkafOn = on
-	if godModeShkafConn then godModeShkafConn:Disconnect() godModeShkafConn = nil end
+local function setGm(on)
+	gmOn = on
+	if gmCn then gmCn:Disconnect() gmCn = nil end
 	if not on then return end
-	if not oldNamecallGodMode and hookmetamethod then
-		oldNamecallGodMode = hookmetamethod(game, "__namecall", function(self, ...)
-			local method = getnamecallmethod()
-			local args = {...}
-			if godModeShkafOn and method == "SetAttribute" then
-				if args[1] == "Hided" and args[2] == false then return nil end
+	if not oldGm and hookmetamethod then
+		oldGm = hookmetamethod(game, "__namecall", function(self, ...)
+			local m = getnamecallmethod()
+			local a = {...}
+			if gmOn and m == "SetAttribute" then
+				if a[1] == "Hided" and a[2] == false then return nil end
 			end
-			return oldNamecallGodMode(self, ...)
+			return oldGm(self, ...)
 		end)
 	end
-	godModeShkafConn = RunService.Heartbeat:Connect(function()
-		if not godModeShkafOn then return end
-		local char = LocalPlayer.Character
-		if char then pcall(function() char:SetAttribute("Hided", true) end) end
+	gmCn = rs.Heartbeat:Connect(function()
+		if not gmOn then return end
+		local c = lp.Character
+		if c then pcall(function() c:SetAttribute("Hided", true) end) end
 	end)
 end
 
-local deathEvent = Events:FindFirstChild("Death")
-if deathEvent then
-	deathEvent.OnClientEvent:Connect(function()
+local deathEv = ev:FindFirstChild("Death")
+if deathEv then
+	deathEv.OnClientEvent:Connect(function()
 		task.delay(0.5, function()
-			local pg = LocalPlayer:FindFirstChild("PlayerGui")
+			local pg = lp:FindFirstChild("PlayerGui")
 			if not pg then return end
 			local attr = _G.__QX_ATTR
 			for _, gui in ipairs(pg:GetChildren()) do
@@ -1018,56 +1072,74 @@ if deathEvent then
 end
 
 Library:CreateLoader({
-	Title = "QuackHub", Subtitle = "Murino Horror", Theme = "Charcoal", ShowBar = true, FadeTime = 0.3,
-	Texts = { { Text = "Loading...", Duration = 0.4 }, { Text = "Ready", Duration = 0.3 } },
-	FinishText = "Done",
+	Title = "QuackHub",
+	Subtitle = "Murino Horror",
+	Theme = "Charcoal",
+	ShowBar = true,
+	FadeTime = 0.35,
+	Texts = {
+		{ Text = "Checking environment...", Duration = 0.45 },
+		{ Text = "Loading modules...", Duration = 0.5 },
+		{ Text = "Building UI...", Duration = 0.4 },
+	},
+	FinishText = "Successfuly",
 	OnFinish = function()
-		local Window = Library:CreateWindow({
-			Title = "QuackHub", Theme = "Charcoal", ToggleKey = Enum.KeyCode.K,
-			Stealth = true, ShowWatermark = false, ShowDropButton = false, UseCustomFont = false,
+		local W = Library:CreateWindow({
+			Title = "QuackHub",
+			Theme = "Charcoal",
+			ToggleKey = Enum.KeyCode.K,
+			Stealth = true,
+			ShowWatermark = false,
+			Watermark = "QuackHub",
+			ShowDropButton = true,
+			UseCustomFont = false,
 		})
-		local Main = Window:CreateTab("Main", "rbxassetid://102384750306029")
+		local Main = W:CreateTab("Main", "rbxassetid://102384750306029")
 		Main:CreateSection("Main Features")
 		Main:CreateToggle({ Title = "Destroy Zaec", Default = false, Flag = "DestroyZaec",
-			Callback = function(v) setDestroyZaec(v) Window:Notify("Zaec", v and "Protected" or "Off", 2) end })
+			Callback = function(v) setZaec(v) end })
 		Main:CreateToggle({ Title = "Auto Chigur", Default = false, Flag = "AutoChigur",
-			Callback = function(v) setAutoChigur(v) Window:Notify("Chigur", v and "On" or "Off", 2) end })
+			Callback = function(v) setChg(v) end })
 		Main:CreateToggle({ Title = "Auto Skip", Description = "banana, Train, Doors, Holls, FleshWall", Default = false, Flag = "AutoSkip",
-			Callback = function(v) setAutoSkip(v) Window:Notify("Skip", v and "On" or "Off", 2) end })
+			Callback = function(v) setSk(v) end })
 		Main:CreateToggle({ Title = "Auto Artur", Default = false, Flag = "AutoArtur",
-			Callback = function(v) setAutoArtur(v) Window:Notify("Artur", v and "On" or "Off", 2) end })
+			Callback = function(v) setArt(v) end })
 		Main:CreateToggle({ Title = "Auto Skvorec", Default = false, Flag = "AutoSkvorec",
-			Callback = function(v) setAutoSkvorec(v) Window:Notify("Skvorec", v and "On" or "Off", 2) end })
+			Callback = function(v) setSkv(v) end })
 		Main:CreateToggle({ Title = "Auto Golodniy Drug", Default = false, Flag = "AutoGolod",
-			Callback = function(v) setAutoGolod(v) Window:Notify("Golodniy", v and "On" or "Off", 2) end })
+			Callback = function(v) setGol(v) end })
 		Main:CreateToggle({ Title = "Auto PickUp", Description = "Coins priority", Default = false, Flag = "AutoPickup",
-			Callback = function(v) setAutoPickup(v) Window:Notify("PickUp", v and "On" or "Off", 2) end })
+			Callback = function(v) setPk(v) end })
 		Main:CreateToggle({ Title = "Freeze Meat", Default = false, Flag = "FreezeMeat",
-			Callback = function(v) setFreezeMeat(v) Window:Notify("Meat", v and "Frozen" or "Unfrozen", 2) end })
+			Callback = function(v) setFz(v) end })
 		Main:CreateToggle({ Title = "No Stun", Default = false, Flag = "NoStun",
-			Callback = function(v) setNoStun(v) Window:Notify("Stun", v and "Unblocked" or "Blocked", 2) end })
-		local Esp = Window:CreateTab("ESP", "rbxassetid://10723346959")
+			Callback = function(v) setStun(v) end })
+
+		local Esp = W:CreateTab("ESP", "rbxassetid://10723346959")
 		Esp:CreateSection("Events")
 		Esp:CreateToggle({ Title = "ESP Room 0000", Default = false, Flag = "EspRoom0000",
-			Callback = function(v) setEspRoom0000(v) Window:Notify("Room 0000", v and "On" or "Off", 2) end })
+			Callback = function(v) setEspRm(v) end })
 		Esp:CreateToggle({ Title = "ESP Items", Default = false, Flag = "EspItems",
-			Callback = function(v) setEspItems(v) Window:Notify("Items ESP", v and "On" or "Off", 2) end })
-		local Misc = Window:CreateTab("Misc", "rbxassetid://137713608713884")
+			Callback = function(v) setEsp(v) end })
+
+		local Misc = W:CreateTab("Misc", "rbxassetid://137713608713884")
 		Misc:CreateSection("Movement")
 		Misc:CreateSlider({ Title = "WalkSpeed", Min = 16, Max = 200, Default = 16, Flag = "WalkSpeed",
-			Callback = function(v) wsValue = v setWalkSpeed(true, v) end })
+			Callback = function(v) wsVal = v setWS(true, v) end })
 		Misc:CreateSection("Items")
 		Misc:CreateToggle({ Title = "Instant Interact", Default = false, Flag = "InstantUse",
-			Callback = function(v) setInstantUse(v) Window:Notify("Instant Use", v and "On" or "Off", 2) end })
+			Callback = function(v) setInst(v) end })
 		Misc:CreateSection("World")
 		Misc:CreateToggle({ Title = "Fullbright", Default = false, Flag = "Fullbright",
-			Callback = function(v) setFullbright(v) Window:Notify("Fullbright", v and "On" or "Off", 2) end })
+			Callback = function(v) setFB(v) end })
 		Misc:CreateToggle({ Title = "Disable Shake", Default = false, Flag = "DisableShake",
-			Callback = function(v) setDisableShake(v) Window:Notify("Shake", v and "Disabled" or "Enabled", 2) end })
-		local Experimental = Window:CreateTab("Experementals", "rbxassetid://10709751939")
-		Experimental:CreateSection("God Mode")
-		Experimental:CreateToggle({ Title = "God Mode Shkaf", Description = "Maybe?", Default = false, Flag = "GodModeShkaf",
-			Callback = function(v) setGodModeShkaf(v) Window:Notify("God Mode", v and "Active" or "Off", 2) end })
-		Window:Notify("Hub", "Ready", 3)
+			Callback = function(v) setShk(v) end })
+
+		local Exp = W:CreateTab("Experementals", "rbxassetid://10709751939")
+		Exp:CreateSection("God Mode")
+		Exp:CreateToggle({ Title = "God Mode Shkaf", Description = "Maybe?", Default = false, Flag = "GodModeShkaf",
+			Callback = function(v) setGm(v) end })
+
+		W:Notify("QuackHub", "success", 3)
 	end,
 })
